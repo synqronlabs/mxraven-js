@@ -1,0 +1,100 @@
+{
+  "name": "@mxraven/mail",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for the mxRaven mail runtime: SMTP submission, webhook verification, and recipient feedback.",
+  "keywords": [
+    "email",
+    "feedback",
+    "mail",
+    "mxraven",
+    "sdk",
+    "smtp",
+    "webhook"
+  ],
+  "homepage": "https://github.com/synqronlabs/mxraven-js",
+  "bugs": {
+    "url": "https://github.com/synqronlabs/mxraven-js/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "SynqronLabs Private Limited",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/synqronlabs/mxraven-js.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./webhook": {
+      "import": {
+        "types": "./dist/webhook/index.d.ts",
+        "default": "./dist/webhook/index.js"
+      },
+      "require": {
+        "types": "./dist/webhook/index.d.cts",
+        "default": "./dist/webhook/index.cjs"
+      }
+    },
+    "./feedback": {
+      "import": {
+        "types": "./dist/feedback/index.d.ts",
+        "default": "./dist/feedback/index.js"
+      },
+      "require": {
+        "types": "./dist/feedback/index.d.cts",
+        "default": "./dist/feedback/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "docs": "typedoc",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm run build && changeset publish",
+    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^3.0.2",
+    "@types/node": "^26.5.1",
+    "eslint-plugin-tsdoc": "^0.5.2",
+    "oxfmt": "^0.67.0",
+    "oxlint": "^1.82.0",
+    "tsdown": "~0.23.0",
+    "typedoc": "^0.28.20",
+    "typedoc-plugin-markdown": "^4.13.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "packageManager": "pnpm@11.12.0"
+}

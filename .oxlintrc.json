@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import", "unicorn", "oxc", "node", "promise", "vitest"],
+  "jsPlugins": [{ "name": "tsdoc", "specifier": "eslint-plugin-tsdoc" }],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn"
+  },
+  "env": {
+    "node": true,
+    "es2024": true
+  },
+  "rules": {
+    "tsdoc/syntax": "error"
+  },
+  "overrides": [
+    {
+      "files": ["src/internal/smtp/**", "src/webhook/**", "src/feedback/**"],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts"],
+      "rules": {
+        "typescript/no-explicit-any": "off"
+      }
+    }
+  ],
+  "ignorePatterns": ["dist", "docs", "coverage", "node_modules"]
+}
