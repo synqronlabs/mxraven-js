@@ -41,6 +41,51 @@ describe("parseAddress", () => {
   });
 });
 
+describe("parseAddress with CFWS", () => {
+  it.each([
+    [
+      "user@example.com (Comment)",
+      { localPart: "user", domain: "example.com", displayName: "Comment" },
+    ],
+    [
+      "John (middle) Doe <john@example.com>",
+      { localPart: "john", domain: "example.com", displayName: "John Doe" },
+    ],
+    [
+      "John\r\n Doe <john@example.com>",
+      { localPart: "john", domain: "example.com", displayName: "John Doe" },
+    ],
+    [
+      "John Q. Public <john@example.com>",
+      { localPart: "john", domain: "example.com", displayName: "John Q. Public" },
+    ],
+    ["(lead) user@example.com", { localPart: "user", domain: "example.com" }],
+    ["< john@example.com >", { localPart: "john", domain: "example.com" }],
+    ["user@[192.0.2.1]", { localPart: "user", domain: "[192.0.2.1]" }],
+    [
+      "user@example.com (a \\)b)",
+      { localPart: "user", domain: "example.com", displayName: "a )b" },
+    ],
+    [
+      "(before) John Doe (after) <john@example.com>",
+      { localPart: "john", domain: "example.com", displayName: "John Doe" },
+    ],
+  ])("parses %j", (input, expected) => {
+    expect(parseAddress(input)).toEqual(expected);
+  });
+
+  it.each([
+    "John\nDoe <john@example.com>",
+    "user@example.com\r\nBcc: attacker@example.com",
+    "John <john@example.com",
+    "John Doe",
+    "user@example.com extra",
+    "(unterminated <john@example.com>",
+  ])("rejects %j", (input) => {
+    expect(() => parseAddress(input)).toThrow(/mail:/);
+  });
+});
+
 describe("formatAddress", () => {
   it("formats a bare address", () => {
     expect(formatAddress({ localPart: "user", domain: "example.com" })).toBe("user@example.com");
