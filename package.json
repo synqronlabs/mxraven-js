@@ -76,6 +76,8 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "docs": "typedoc",
+    "docs:html": "typedoc --options typedoc.pages.json",
+    "docs:watch": "typedoc --watch",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm run build && changeset publish",

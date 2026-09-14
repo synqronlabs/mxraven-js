@@ -62,6 +62,7 @@ pnpm run lint:fix     # oxlint --fix
 pnpm run format       # oxfmt (writes)
 pnpm run format:check # oxfmt --check
 pnpm run docs         # typedoc -> docs/
+pnpm run docs:html    # typedoc HTML -> docs-html/ (GitHub Pages)
 pnpm run check        # format:check + lint + typecheck + test + build
 pnpm run changeset    # record a release note
 ```

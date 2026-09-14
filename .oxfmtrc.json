@@ -8,5 +8,5 @@
   "sortImports": true,
   "sortPackageJson": true,
   "jsdoc": false,
-  "ignorePatterns": ["dist", "docs", "coverage", "node_modules", "**/*.pem"]
+  "ignorePatterns": ["dist", "docs", "docs-html", "coverage", "node_modules", "**/*.pem"]
 }

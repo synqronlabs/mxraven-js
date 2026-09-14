@@ -28,5 +28,5 @@
       }
     }
   ],
-  "ignorePatterns": ["dist", "docs", "coverage", "node_modules"]
+  "ignorePatterns": ["dist", "docs", "docs-html", "coverage", "node_modules"]
 }
