@@ -24,4 +24,17 @@ describe("SMTPError", () => {
     expect(error.permanent).toBe(false);
     expect(error.transient).toBe(false);
   });
+
+  it.each([
+    [399, false, false],
+    [400, true, false],
+    [499, true, false],
+    [500, false, true],
+    [599, false, true],
+    [600, false, false],
+  ])("classifies code %d as transient=%s permanent=%s", (code, transient, permanent) => {
+    const error = new SMTPError({ code, message: "reply" });
+    expect(error.transient).toBe(transient);
+    expect(error.permanent).toBe(permanent);
+  });
 });

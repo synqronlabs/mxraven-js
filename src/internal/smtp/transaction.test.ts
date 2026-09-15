@@ -6,6 +6,7 @@ import {
   buildMailFromCommand,
   buildRcptToCommand,
   dotStuff,
+  dotStuffChunk,
   extractMessageId,
   type CommandContext,
   type SmtpEnvelope,
@@ -214,6 +215,39 @@ describe("dotStuff", () => {
     expect(decoder.decode(dotStuff(encoder.encode(input)))).toBe(
       "Normal line\r\n..dot line\r\nAnother normal\r\n..another dot\r\n",
     );
+  });
+});
+
+describe("dotStuffChunk", () => {
+  it("carries line-start state so chunked output matches whole-buffer stuffing", () => {
+    const chunks = [".first\r\n.second", "\r\n.third\r\n."];
+    let atLineStart = true;
+    const output: number[] = [];
+
+    for (const chunk of chunks) {
+      const state = dotStuffChunk(encoder.encode(chunk), atLineStart);
+      output.push(...state.data);
+      atLineStart = state.atLineStart;
+    }
+
+    expect(decoder.decode(Uint8Array.from(output))).toBe(
+      decoder.decode(dotStuff(encoder.encode(chunks.join("")))),
+    );
+  });
+
+  it("stuffs a dot that begins a line split across a CRLF boundary", () => {
+    const first = dotStuffChunk(encoder.encode("line\r"), true);
+    expect(decoder.decode(first.data)).toBe("line\r");
+    expect(first.atLineStart).toBe(false);
+
+    const second = dotStuffChunk(encoder.encode("\n.hidden"), first.atLineStart);
+    expect(decoder.decode(second.data)).toBe("\n..hidden");
+    expect(second.atLineStart).toBe(false);
+  });
+
+  it("stuffs a leading dot when the stream starts a line", () => {
+    const state = dotStuffChunk(encoder.encode(".\r\n"), true);
+    expect(decoder.decode(state.data)).toBe("..\r\n");
   });
 });
 

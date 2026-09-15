@@ -54,6 +54,8 @@ export interface MockSmtpServerOptions {
   readonly tls?: MockTlsOptions;
   /** Accepts connections but never sends a greeting or replies. */
   readonly silent?: boolean;
+  /** Closes the connection without replying when `QUIT` is received. */
+  readonly closeOnQuit?: boolean;
 }
 
 /** A line-oriented reader over a duplex stream. */
@@ -157,6 +159,7 @@ class LineReader {
 interface MockConnection {
   readonly reader: LineReader;
   write(line: string): void;
+  close(): void;
   upgradeTls(): Promise<MockConnection>;
 }
 
@@ -264,6 +267,9 @@ export class MockSmtpServer {
       write: (line) => {
         socket.write(`${line}\r\n`);
       },
+      close: () => {
+        socket.destroy();
+      },
       upgradeTls: async () => {
         if (this.secureContext === undefined) {
           throw new Error("mock smtp server has no TLS context");
@@ -361,7 +367,11 @@ export class MockSmtpServer {
       } else if (upper === "NOOP") {
         connection.write("250 2.0.0 Ok");
       } else if (upper === "QUIT") {
-        connection.write("221 2.0.0 Bye");
+        if (this.options.closeOnQuit === true) {
+          connection.close();
+        } else {
+          connection.write("221 2.0.0 Bye");
+        }
         return;
       } else if (upper.startsWith("AUTH PLAIN")) {
         connection.write(

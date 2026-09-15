@@ -91,6 +91,14 @@ describe("dial", () => {
     ).rejects.toMatchObject({ kind: "tls-not-supported" });
   });
 
+  it("continues without TLS when STARTTLS is unsupported and not required", async () => {
+    const server = await startServer({ extensions: ["PIPELINING"] });
+    const session = await dialerFor(server, { startTls: true, requireTls: false }).dial();
+    expect(session.isTls).toBe(false);
+    expect(session.hasExtension("PIPELINING")).toBe(true);
+    session.close();
+  });
+
   it("upgrades with STARTTLS when supported", async () => {
     const server = await startServer({
       startTls: true,
@@ -115,6 +123,17 @@ describe("dial", () => {
     }).dial();
     expect(session.isTls).toBe(true);
     session.close();
+  });
+
+  it("surfaces implicit TLS connection failures", async () => {
+    const dialer = new SmtpDialer({
+      host: "127.0.0.1",
+      port: 1,
+      connectTimeout: 500,
+      implicitTls: true,
+      tls: { rejectUnauthorized: false },
+    });
+    await expect(dialer.dial()).rejects.toBeInstanceOf(Error);
   });
 
   it("produces a session ready to send", async () => {

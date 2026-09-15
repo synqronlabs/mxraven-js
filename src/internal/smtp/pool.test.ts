@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { parseAddress } from "../address.js";
 import { SmtpDialer } from "./dialer.js";
+import { SmtpAbortError } from "./errors.js";
 import { MockSmtpServer, type MockSmtpServerOptions } from "./mock-server.js";
 import { SmtpPool, type SmtpPoolOptions } from "./pool.js";
 import { SmtpSession } from "./session.js";
@@ -98,6 +99,38 @@ describe("SmtpPool lifecycle", () => {
     await pool.close();
     await expect(pending).rejects.toMatchObject({ kind: "client-closed" });
     pool.release(first);
+  });
+
+  it("releases capacity when a dial fails", async () => {
+    const dialer = new SmtpDialer({ host: "127.0.0.1", port: 1, connectTimeout: 500 });
+    const pool = new SmtpPool({ dialer, size: 1 });
+    pools.push(pool);
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const error = await pool
+        .acquire(AbortSignal.timeout(2_000))
+        .then(() => undefined)
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(SmtpAbortError);
+    }
+  });
+
+  it("closes sessions released while closing", async () => {
+    const server = await startServer();
+    const pool = poolFor(server, { size: 4 });
+    const first = await pool.acquire();
+    const second = await pool.acquire();
+
+    await Promise.all([
+      pool.close(),
+      Promise.resolve().then(() => pool.release(first)),
+      Promise.resolve().then(() => pool.release(second)),
+    ]);
+
+    expect(pool.isClosed).toBe(true);
+    await expect(first.noop()).rejects.toMatchObject({ kind: "no-connection" });
+    await expect(second.noop()).rejects.toMatchObject({ kind: "no-connection" });
   });
 });
 

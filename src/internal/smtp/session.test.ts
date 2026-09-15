@@ -136,6 +136,38 @@ describe("connect and EHLO", () => {
     expect(lines.some((line) => line.startsWith("client:EHLO"))).toBe(true);
     expect(lines.some((line) => line.startsWith("server:250"))).toBe(true);
   });
+
+  it("exposes the greeting reply as lastResponse", async () => {
+    const server = await startServer();
+    const session = sessionFor(server);
+
+    expect(session.lastResponse).toBeUndefined();
+    await session.connect();
+    expect(session.lastResponse?.code).toBe(220);
+    await session.hello();
+    expect(session.lastResponse?.code).toBe(250);
+  });
+
+  it("binds to the configured local address", async () => {
+    const server = await startServer();
+    const session = sessionFor(server, { localAddress: "127.0.0.1" });
+
+    await session.connect();
+    await session.hello();
+    expect(session.isEsmtp).toBe(true);
+  });
+
+  it("rejects an invalid local address", async () => {
+    const session = new SmtpSession({
+      host: "127.0.0.1",
+      port: 1,
+      localAddress: "invalid",
+      connectTimeout: 500,
+    });
+    sessions.push(session);
+
+    await expect(session.connect()).rejects.toBeInstanceOf(Error);
+  });
 });
 
 describe("authentication", () => {
@@ -266,6 +298,16 @@ describe("stateless commands", () => {
     await expect(session.noop()).rejects.toMatchObject({ kind: "no-connection" });
     await expect(session.quit()).rejects.toMatchObject({ kind: "no-connection" });
   });
+
+  it("QUIT tolerates a server that closes the connection immediately", async () => {
+    const server = await startServer({ closeOnQuit: true });
+    const session = sessionFor(server);
+
+    await session.connect();
+    await session.hello();
+    await expect(session.quit()).resolves.toBeUndefined();
+    await expect(session.noop()).rejects.toMatchObject({ kind: "no-connection" });
+  });
 });
 
 describe("STARTTLS", () => {
@@ -320,6 +362,25 @@ describe("STARTTLS", () => {
     expect(session.isTls).toBe(true);
     await session.hello();
     expect(session.hasExtension("PIPELINING")).toBe(true);
+  });
+
+  it("honors an explicit CA and server name under full verification", async () => {
+    const server = await startServer({ implicitTls: true, tls, extensions: ["PIPELINING"] });
+    const session = sessionFor(server, {
+      tls: { rejectUnauthorized: true, ca: tls.cert, servername: "localhost" },
+    });
+
+    await session.connectTls();
+    expect(session.isTls).toBe(true);
+  });
+
+  it("rejects a server whose certificate does not match the server name", async () => {
+    const server = await startServer({ implicitTls: true, tls, extensions: ["PIPELINING"] });
+    const session = sessionFor(server, {
+      tls: { rejectUnauthorized: true, ca: tls.cert, servername: "wrong.example.com" },
+    });
+
+    await expect(session.connectTls()).rejects.toBeInstanceOf(Error);
   });
 });
 

@@ -177,6 +177,56 @@ describe("send", () => {
     expect(server.dataCommands).toBe(0);
   });
 
+  it("uses the default BDAT chunk size when none is given", async () => {
+    const server = await startServer({ extensions: ["CHUNKING"] });
+    const session = sessionFor(server);
+    await session.connect();
+    await session.hello();
+
+    const data = new Uint8Array(64 * 1024 + 10).fill(0x78);
+    const result = await session.send(envelope("sender@example.com", ["rcpt@example.com"]), data, {
+      preferBdat: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(server.bdatCommands).toBe(2);
+    expect(server.dataCommands).toBe(0);
+    expect(server.bdatChunks.map((chunk) => chunk.length)).toEqual([64 * 1024, 10]);
+    expect(server.bdatChunks.reduce((total, chunk) => total + chunk.length, 0)).toBe(data.length);
+  });
+
+  it("sends an empty payload as a single terminating BDAT", async () => {
+    const server = await startServer({ extensions: ["CHUNKING"] });
+    const session = sessionFor(server);
+    await session.connect();
+    await session.hello();
+
+    const result = await session.send(
+      envelope("sender@example.com", ["rcpt@example.com"]),
+      new Uint8Array(),
+      { preferBdat: true },
+    );
+
+    expect(result.success).toBe(true);
+    expect(server.bdatCommands).toBe(1);
+    expect(server.dataCommands).toBe(0);
+    expect(server.bdatChunks).toHaveLength(0);
+  });
+
+  it("uses DATA at exactly the auto-BDAT threshold", async () => {
+    const server = await startServer({ extensions: ["CHUNKING"] });
+    const session = sessionFor(server);
+    await session.connect();
+    await session.hello();
+
+    const data = new Uint8Array(AUTO_BDAT_THRESHOLD).fill(0x78);
+    const result = await session.send(envelope("sender@example.com", ["rcpt@example.com"]), data);
+
+    expect(result.success).toBe(true);
+    expect(server.dataCommands).toBe(1);
+    expect(server.bdatCommands).toBe(0);
+  });
+
   it("adds REQUIRETLS over a TLS session when supported", async () => {
     const server = await startServer({ implicitTls: true, tls, extensions: ["REQUIRETLS"] });
     const session = sessionFor(server, { tls: { rejectUnauthorized: false } });
@@ -230,6 +280,28 @@ describe("sendRaw", () => {
       "..line",
       "body without final newline",
     ]);
+  });
+
+  it("streams chunked data with dot-stuffing across chunk boundaries", async () => {
+    const server = await startServer({ dataResponseMessage: "2.0.0 Ok: queued as SPLIT" });
+    const session = sessionFor(server);
+    await session.connect();
+    await session.hello();
+
+    async function* chunks(): AsyncGenerator<Uint8Array> {
+      yield encoder.encode("Subject: Split\r\n\r\n.");
+      yield encoder.encode("\r\nbody ends with dot");
+      yield encoder.encode(".\r\n.");
+    }
+
+    const result = await session.sendRaw(
+      envelope("sender@example.com", ["rcpt@example.net"]),
+      chunks(),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.messageId).toBe("SPLIT");
+    expect(server.dataLines).toEqual(["Subject: Split", "", "..", "body ends with dot.", ".."]);
   });
 
   it("advertises SIZE and BODY parameters", async () => {
