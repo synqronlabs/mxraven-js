@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@mxraven/mail?label=NPM&color=007ec6&style=for-the-badge)](https://www.npmjs.com/package/@mxraven/mail)
 [![CI](https://img.shields.io/github/actions/workflow/status/synqronlabs/mxraven-js/ci.yml?branch=main&label=CI&style=for-the-badge)](https://github.com/synqronlabs/mxraven-js/actions/workflows/ci.yml)
-[![docs](https://img.shields.io/badge/DOCS-synqronlabs.github.io%2Fmxraven--js-007ec6?style=for-the-badge)](https://js.mxraven.com)
+[![docs](https://img.shields.io/badge/DOCS-js.mxraven.com-007ec6?style=for-the-badge)](https://js.mxraven.com)
 [![license](https://img.shields.io/badge/LICENSE-APACHE%202.0-007ec6?style=for-the-badge)](./LICENSE)
 [![Node.js](https://img.shields.io/node/v/@mxraven/mail?label=NODE&color=fe7d37&style=for-the-badge)](https://nodejs.org)
 
