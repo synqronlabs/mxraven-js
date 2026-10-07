@@ -7,7 +7,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import { readBoundedBody } from "./body.js";
 import { decode } from "./decode.js";
-import { InvalidSignatureError } from "./errors.js";
+import { InvalidSignatureError, WebhookRequestError } from "./errors.js";
 import type { Event } from "./payload.js";
 
 /**
@@ -52,7 +52,8 @@ const DEFAULT_MAX_BODY_BYTES = 1 << 20;
  * Verifies the signature of an mxRaven webhook request.
  *
  * A verifier is safe for concurrent use once constructed. Configure it with a
- * signing secret or with per-key secrets for rotation.
+ * signing secret or with per-key secrets for rotation. For typed dispatch and
+ * HTTP status handling, use {@link WebhookHandler}, which composes a verifier.
  *
  * @example
  * ```ts
@@ -121,8 +122,10 @@ export class Verifier {
    * @param request - The incoming request.
    * @param options - An optional cancellation signal.
    * @throws {@link InvalidSignatureError} When the signature does not match.
-   * @throws `Error` When required headers are missing, the timestamp is stale,
-   * or the body exceeds the configured limit.
+   * @throws {@link WebhookRequestError} When required headers are missing, the
+   * timestamp is stale, or the signing key is unknown.
+   * @throws {@link PayloadTooLargeError} When the body exceeds the configured
+   * limit.
    */
   async verify(request: Request, options: VerifyOptions = {}): Promise<void> {
     const body = await this.readBody(request, options.signal);
@@ -136,7 +139,9 @@ export class Verifier {
    * @param options - An optional cancellation signal.
    * @returns The decoded event.
    * @throws {@link InvalidSignatureError} When the signature does not match.
-   * @throws `Error` When verification or decoding fails.
+   * @throws {@link WebhookRequestError} When verification or decoding fails.
+   * @throws {@link PayloadTooLargeError} When the body exceeds the configured
+   * limit.
    */
   async verifyAndDecode(request: Request, options: VerifyOptions = {}): Promise<Event> {
     const body = await this.readBody(request, options.signal);
@@ -152,24 +157,24 @@ export class Verifier {
   private check(request: Request, body: Uint8Array): void {
     const webhookId = request.headers.get(webhookHeaders.webhookId)?.trim() ?? "";
     if (webhookId === "") {
-      throw new Error("webhook: missing webhook ID header");
+      throw new WebhookRequestError("webhook: missing webhook ID header");
     }
     const timestamp = request.headers.get(webhookHeaders.timestamp)?.trim() ?? "";
     if (timestamp === "") {
-      throw new Error("webhook: missing timestamp header");
+      throw new WebhookRequestError("webhook: missing timestamp header");
     }
     const signature = request.headers.get(webhookHeaders.signature)?.trim() ?? "";
     if (signature === "") {
-      throw new Error("webhook: missing signature header");
+      throw new WebhookRequestError("webhook: missing signature header");
     }
 
     if (this.tolerance > 0) {
       if (!/^\d+$/.test(timestamp)) {
-        throw new Error(`webhook: invalid timestamp ${JSON.stringify(timestamp)}`);
+        throw new WebhookRequestError(`webhook: invalid timestamp ${JSON.stringify(timestamp)}`);
       }
       const skew = Math.abs(Date.now() - Number.parseInt(timestamp, 10) * 1000);
       if (skew > this.tolerance) {
-        throw new Error("webhook: timestamp is outside the accepted clock skew");
+        throw new WebhookRequestError("webhook: timestamp is outside the accepted clock skew");
       }
     }
 
@@ -177,11 +182,11 @@ export class Verifier {
 
     const scheme = "sha256=";
     if (!signature.startsWith(scheme)) {
-      throw new Error("webhook: unsupported signature algorithm");
+      throw new WebhookRequestError("webhook: unsupported signature algorithm");
     }
     const provided = decodeHex(signature.slice(scheme.length));
     if (provided === undefined) {
-      throw new Error("webhook: malformed signature");
+      throw new WebhookRequestError("webhook: malformed signature");
     }
 
     const expected = signRequest(secret, {
@@ -200,11 +205,11 @@ export class Verifier {
     const value = (kid ?? "").trim();
     if (this.keys.size > 0) {
       if (value === "") {
-        throw new Error("webhook: missing signature key ID");
+        throw new WebhookRequestError("webhook: missing signature key ID");
       }
       const secret = this.keys.get(value);
       if (secret === undefined) {
-        throw new Error(`webhook: unknown signature key ID ${JSON.stringify(value)}`);
+        throw new WebhookRequestError(`webhook: unknown signature key ID ${JSON.stringify(value)}`);
       }
       return secret;
     }

@@ -2,6 +2,7 @@
  * mxRaven webhook payload decoding.
  */
 
+import { WebhookRequestError } from "./errors.js";
 import {
   eventType,
   type DeliveryStatus,
@@ -19,8 +20,8 @@ import {
  *
  * @param body - The raw JSON payload bytes, or a decoded string.
  * @returns The decoded event.
- * @throws `Error` When the body is not valid JSON or the payload is
- * unrecognized.
+ * @throws {@link WebhookRequestError} When the body is not valid JSON or the
+ * payload is unrecognized.
  *
  * @public
  */
@@ -31,10 +32,10 @@ export function decode(body: Uint8Array | string): Event {
   try {
     parsed = JSON.parse(text);
   } catch (error) {
-    throw new Error("webhook: decode payload", { cause: error });
+    throw new WebhookRequestError("webhook: decode payload", error);
   }
   if (parsed === null || typeof parsed !== "object") {
-    throw new Error("webhook: unrecognized payload");
+    throw new WebhookRequestError("webhook: unrecognized payload");
   }
 
   const probe = parsed as { event_type?: unknown; status?: unknown };
@@ -47,7 +48,7 @@ export function decode(body: Uint8Array | string): Event {
       if (probe.status !== undefined && probe.status !== null) {
         return { type: eventType.deliveryStatus, deliveryStatus: parsed as DeliveryStatus };
       }
-      throw new Error(
+      throw new WebhookRequestError(
         `webhook: unrecognized payload: event_type ${JSON.stringify(probe.event_type)}`,
       );
   }

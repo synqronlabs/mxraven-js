@@ -147,3 +147,5 @@ tmp/
 # Generated API docs
 docs/
 docs-html/
+
+/mxraven-java/

@@ -190,7 +190,12 @@ export interface InboundEmail {
   readonly message: MessageSummary;
   /** Every message header in the order received. */
   readonly headers: readonly HeaderField[];
-  /** Time-limited access to the raw RFC 822 message. */
+  /**
+   * Access to the full raw RFC 822 message. The message body and attachments
+   * are not inlined in the payload; use {@link fetchRawEmail} to download the
+   * bytes, or `fetchAndParseRawEmail` from `@mxraven/mail/mime` to download and
+   * parse them in one call.
+   */
   readonly raw_email: RawEmail;
 }
 

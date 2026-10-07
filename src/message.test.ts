@@ -1,12 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { mailboxToString } from "./internal/address.js";
 import { Message } from "./message.js";
+import type { MediaType } from "./message.js";
 
 /** Joins folded header continuation lines for assertions. */
 function unfoldHeaders(value: string): string {
   return value.replace(/\r\n[ \t]+/g, " ");
 }
+
+describe("MediaType", () => {
+  it("accepts known literals and arbitrary media types", () => {
+    expectTypeOf<"application/pdf">().toExtend<MediaType>();
+    expectTypeOf<string>().toExtend<MediaType>();
+  });
+});
 
 describe("Message", () => {
   it("builds a plain-text message", () => {

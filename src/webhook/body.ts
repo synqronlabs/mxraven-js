@@ -4,6 +4,8 @@
  * @internal
  */
 
+import { PayloadTooLargeError } from "./errors.js";
+
 /**
  * Reads a web stream, rejecting when it exceeds a byte limit.
  *
@@ -50,7 +52,7 @@ export async function readBoundedBody(
         total += value.byteLength;
         if (total > limit) {
           void reader.cancel().catch(() => undefined);
-          throw new Error(`webhook: ${label} exceeds ${limit} bytes`);
+          throw new PayloadTooLargeError(`webhook: ${label} exceeds ${limit} bytes`);
         }
         chunks.push(value);
       }

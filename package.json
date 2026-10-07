@@ -60,6 +60,16 @@
         "default": "./dist/feedback/index.cjs"
       }
     },
+    "./mime": {
+      "import": {
+        "types": "./dist/mime/index.d.ts",
+        "default": "./dist/mime/index.js"
+      },
+      "require": {
+        "types": "./dist/mime/index.d.cts",
+        "default": "./dist/mime/index.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {

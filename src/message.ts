@@ -33,6 +33,64 @@ export interface Header {
 }
 
 /**
+ * A MIME media type.
+ *
+ * The listed literals provide editor completion for common types, but every
+ * other `type/subtype` value is accepted as well: the IANA registry is open,
+ * and vendor or experimental types such as `application/vnd.*` and
+ * `application/x-*` are valid. The value is used verbatim in the part's
+ * `Content-Type` header.
+ *
+ * @example
+ * ```ts
+ * const attachment = {
+ *   filename: "q3.pdf",
+ *   contentType: "application/pdf",
+ *   data: pdfBytes,
+ * };
+ * ```
+ *
+ * @public
+ */
+export type MediaType =
+  | "text/plain"
+  | "text/html"
+  | "text/css"
+  | "text/csv"
+  | "text/markdown"
+  | "text/calendar"
+  | "text/vcard"
+  | "application/json"
+  | "application/xml"
+  | "application/pdf"
+  | "application/zip"
+  | "application/gzip"
+  | "application/x-tar"
+  | "application/octet-stream"
+  | "application/msword"
+  | "application/vnd.ms-excel"
+  | "application/vnd.ms-powerpoint"
+  | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  | "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  | "application/vnd.oasis.opendocument.text"
+  | "application/vnd.oasis.opendocument.spreadsheet"
+  | "image/png"
+  | "image/jpeg"
+  | "image/gif"
+  | "image/webp"
+  | "image/bmp"
+  | "image/svg+xml"
+  | "image/x-icon"
+  | "audio/mpeg"
+  | "audio/wav"
+  | "audio/ogg"
+  | "video/mp4"
+  | "video/webm"
+  | "message/rfc822"
+  | (string & Record<never, never>);
+
+/**
  * A message attachment.
  *
  * The attachment data is retained by reference until the message is built. Callers must not mutate
@@ -41,8 +99,11 @@ export interface Header {
 export interface Attachment {
   /** The attachment filename. It may be empty. */
   readonly filename?: string;
-  /** The media type. Defaults to `application/octet-stream`. */
-  readonly contentType?: string;
+  /**
+   * The media type. Defaults to `application/octet-stream`. Common types
+   * autocomplete, and any other `type/subtype` value is accepted.
+   */
+  readonly contentType?: MediaType;
   /** The raw attachment content. The caller retains ownership. */
   readonly data: Uint8Array;
   /** Marks the attachment for inline display, for example a `cid:` image. */
