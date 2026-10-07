@@ -1,5 +1,32 @@
 # @mxraven/mail
 
+## 0.2.1
+
+### Patch Changes
+
+- 928adc6: Add `@mxraven/mail/mime` for inbound message parsing: `parseEmail` decodes raw
+  RFC 5322 bytes into headers, addresses, text and HTML bodies, and attachments,
+  and `fetchAndParseRawEmail` downloads a webhook `raw_email` reference and parses
+  it in one call. `multipart/mixed`, `multipart/alternative`, and
+  `multipart/related` are traversed, `base64` and `quoted-printable` transfer
+  encodings, RFC 2047 encoded words, and RFC 2231 parameters are decoded, with
+  UTF-8 and Latin-1 fallbacks for unknown charsets. `message/rfc822` parts are
+  surfaced as attachments.
+- 928adc6: Add the exported `MediaType` type and use it for `Attachment.contentType`.
+  Common media types now autocomplete in editors while any other `type/subtype`
+  string is still accepted, because the MIME registry is open.
+- 928adc6: Add `WebhookHandler` to `@mxraven/mail/webhook`. It verifies, decodes, and
+  dispatches mxRaven webhook events to typed listeners with
+  `on(eventType.inboundEmail, ...)`. `handle` accepts either a Fetch API
+  `Request` or framework request primitives (`method`, `url`, `headers`, `body`),
+  so Express/Fastify/other adapters can call it without rebuilding a request.
+  Protocol failures are reported as typed statuses
+  (`400`/`401`/`413`/`500`) instead of thrown errors, listeners run in
+  registration order, and the delivery is only acknowledged after every listener
+  resolves so failures trigger an mxRaven retry. New error classes
+  `WebhookError`, `WebhookRequestError`, and `PayloadTooLargeError` are exported
+  alongside the existing `InvalidSignatureError`.
+
 ## 0.2.0
 
 ### Minor Changes
