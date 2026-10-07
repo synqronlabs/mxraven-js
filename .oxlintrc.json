@@ -26,6 +26,12 @@
       "rules": {
         "typescript/no-explicit-any": "off"
       }
+    },
+    {
+      "files": ["examples/**"],
+      "rules": {
+        "oxc/no-async-endpoint-handlers": "off"
+      }
     }
   ],
   "ignorePatterns": ["dist", "docs", "docs-html", "coverage", "node_modules"]

@@ -262,6 +262,24 @@ const feedback = new Client({
 await feedback.learnSpam(rawMessageBytes);
 ```
 
+## Examples
+
+Reference examples live in
+[`examples/`](https://github.com/synqronlabs/mxraven-js/tree/main/examples).
+They are not part of the published package, are excluded from the typecheck, and
+are not run by the build. Each file starts with the credentials or paths to
+replace, then shows one workflow:
+
+| Example                    | Shows                                                          |
+| -------------------------- | -------------------------------------------------------------- |
+| `send-with-attachments.ts` | SMTP submission with a regular and an inline `cid:` attachment |
+| `webhook-node.ts`          | A dependency-free Node HTTP adapter                            |
+| `webhook-express.ts`       | Express 5 with `express.raw()` and `trust proxy`               |
+| `webhook-fastify.ts`       | Fastify with a buffer content-type parser                      |
+| `webhook-hono.ts`          | Hono on Workers/Deno/Bun, passing `Request` straight through   |
+| `parse-inbound.ts`         | Decoding an `.eml` file into headers, bodies, and attachments  |
+| `feedback.ts`              | Spam/ham training and one-click unsubscribe                    |
+
 ## Development
 
 Requires Node.js 20.19 or later and pnpm.
