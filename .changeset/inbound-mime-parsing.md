@@ -1,5 +1,5 @@
 ---
-"@mxraven/mail": minor
+"@mxraven/mail": patch
 ---
 
 Add `@mxraven/mail/mime` for inbound message parsing: `parseEmail` decodes raw

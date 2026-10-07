@@ -1,5 +1,5 @@
 ---
-"@mxraven/mail": minor
+"@mxraven/mail": patch
 ---
 
 Add the exported `MediaType` type and use it for `Attachment.contentType`.

@@ -1,5 +1,5 @@
 ---
-"@mxraven/mail": minor
+"@mxraven/mail": patch
 ---
 
 Add `WebhookHandler` to `@mxraven/mail/webhook`. It verifies, decodes, and
