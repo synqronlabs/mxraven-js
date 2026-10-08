@@ -150,6 +150,40 @@ replaces an explicit `.html()` body, and its text replaces an explicit
 both text and HTML are present after rendering, the message is sent as
 `multipart/alternative`.
 
+### React templates
+
+The companion [`@mxraven/react`](https://www.npmjs.com/package/@mxraven/react)
+package renders React templates on the server
+wherever you call `client.send()`, never in the browser. Install it alongside
+React:
+
+```sh
+pnpm add @mxraven/react
+```
+
+```tsx
+import { Client, Message } from "@mxraven/mail";
+import { react } from "@mxraven/react";
+
+function Welcome({ firstName }: { firstName: string }) {
+  return <h1>Welcome, {firstName}!</h1>;
+}
+
+const client = new Client({
+  host: "smtp.mxraven.email",
+  username: "mxr_tx_ab12cd34ef56",
+  secret: process.env.MXRAVEN_SECRET!,
+});
+
+await client.send(
+  new Message()
+    .from("Acme <noreply@acme.example>")
+    .to("customer@example.com")
+    .subject("Welcome")
+    .render(react(), <Welcome firstName="Ada" />),
+);
+```
+
 ## Webhooks
 
 Verification, dispatch, and decoding live in a separate entry point that uses
@@ -336,6 +370,7 @@ replace, then shows one workflow:
 | Example                    | Shows                                                          |
 | -------------------------- | -------------------------------------------------------------- |
 | `send-with-attachments.ts` | SMTP submission with a regular and an inline `cid:` attachment |
+| `send-with-react.tsx`      | Server-side React Email rendering through `@mxraven/react`     |
 | `webhook-node.ts`          | A dependency-free Node HTTP adapter                            |
 | `webhook-express.ts`       | Express 5 with `express.raw()` and `trust proxy`               |
 | `webhook-fastify.ts`       | Fastify with a buffer content-type parser                      |
