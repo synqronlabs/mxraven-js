@@ -360,7 +360,13 @@ export class MockSmtpServer {
             this.bdatChunks.push(bytes);
           }
         }
-        connection.write("250 2.0.0 Ok");
+        if (/ LAST$/i.test(command)) {
+          const code = this.options.dataResponseCode ?? 250;
+          const message = this.options.dataResponseMessage ?? "2.0.0 Ok: queued as MOCK123";
+          connection.write(`${code} ${message}`);
+        } else {
+          connection.write("250 2.0.0 Ok");
+        }
       } else if (upper === "RSET") {
         this.rsetCommands += 1;
         connection.write("250 2.0.0 Ok");

@@ -13,6 +13,15 @@ export { Client, defaultAddressPort } from "./client.js";
 export type { ClientOptions, SendOptions } from "./client.js";
 export { SMTPError, SMTPTransactionError } from "./errors.js";
 export { Message } from "./message.js";
-export type { Attachment, Envelope, Header, MediaType } from "./message.js";
+export type {
+  Attachment,
+  DeliveryBy,
+  DsnNotify,
+  DsnReturn,
+  Envelope,
+  EnvelopeRecipient,
+  Header,
+  MediaType,
+} from "./message.js";
 export type { RecipientResult, Result } from "./result.js";
 export type { RenderedTemplate, TemplateRenderer } from "./template.js";

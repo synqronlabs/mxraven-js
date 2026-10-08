@@ -158,6 +158,8 @@ describe("send", () => {
     expect(result.success).toBe(true);
     expect(server.bdatCommands).toBe(1);
     expect(server.dataCommands).toBe(0);
+    expect(result.response?.code).toBe(250);
+    expect(result.messageId).toBe("MOCK123");
   });
 
   it("uses chunked BDAT when preferred", async () => {
@@ -175,6 +177,8 @@ describe("send", () => {
     expect(result.success).toBe(true);
     expect(server.bdatCommands).toBeGreaterThan(0);
     expect(server.dataCommands).toBe(0);
+    expect(result.response?.code).toBe(250);
+    expect(result.messageId).toBe("MOCK123");
   });
 
   it("uses the default BDAT chunk size when none is given", async () => {

@@ -66,6 +66,42 @@ await client.sendRaw(
 );
 ```
 
+### Envelope parameters
+
+`send` and `sendRaw` accept RFC 2852 and RFC 3461 envelope parameters through
+`SendOptions`:
+
+```ts
+await client.send(message, {
+  deliveryBy: { seconds: 3600, mode: "R" }, // DELIVERBY; requires server support
+  dsnRet: "FULL", // RET; requires DSN
+  envid: "order-42", // ENVID; requires DSN
+  extensionParams: new Map([["X-CUSTOM", "value"]]), // extra MAIL FROM parameters
+});
+```
+
+Per-recipient DSN parameters go on the envelope, which `sendRaw` accepts as
+objects alongside plain addresses:
+
+```ts
+await client.sendRaw(
+  {
+    from: "bounce@acme.example",
+    to: [
+      {
+        address: "customer@example.com",
+        notify: ["FAILURE", "DELAY"],
+        orcpt: "original@acme.example", // sent as rfc822;original@acme.example
+      },
+    ],
+  },
+  rawMessageBytes,
+);
+```
+
+`deliveryBy` fails before transfer when the server does not advertise
+`DELIVERBY`, and mode `R` must meet the server's advertised minimum interval.
+
 ### Errors
 
 Rejected commands throw `SMTPError`; when every recipient is rejected,

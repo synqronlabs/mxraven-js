@@ -116,6 +116,43 @@ export interface Attachment {
 }
 
 /**
+ * An RFC 2852 `DELIVERBY` deadline.
+ *
+ * @public
+ */
+export interface DeliveryBy {
+  /** The interval in seconds. */
+  readonly seconds: number;
+  /** `N` requests notification, `R` requests return when the deadline passes. */
+  readonly mode: "N" | "R";
+  /** Whether to request tracing. */
+  readonly trace?: boolean;
+}
+
+/** An RFC 3461 DSN `NOTIFY` value. */
+export type DsnNotify = "SUCCESS" | "FAILURE" | "DELAY" | "NEVER";
+
+/** An RFC 3461 DSN `RET` value. */
+export type DsnReturn = "FULL" | "HDRS";
+
+/**
+ * An envelope recipient with optional RFC 3461 DSN parameters.
+ *
+ * @public
+ */
+export interface EnvelopeRecipient {
+  /** The recipient mailbox. */
+  readonly address: string;
+  /** The `NOTIFY` conditions. Use `["NEVER"]` to disable notifications. */
+  readonly notify?: readonly DsnNotify[];
+  /**
+   * The `ORCPT` original recipient. A bare address is sent as
+   * `rfc822;<address>`.
+   */
+  readonly orcpt?: string;
+}
+
+/**
  * The SMTP envelope for a raw message, independent of the message headers.
  *
  * @public
@@ -126,8 +163,11 @@ export interface Envelope {
    * appropriate for bounce messages.
    */
   readonly from?: string;
-  /** At least one envelope recipient. */
-  readonly to: readonly string[];
+  /**
+   * At least one envelope recipient. Each entry is a mailbox address or an
+   * {@link EnvelopeRecipient} carrying DSN parameters.
+   */
+  readonly to: readonly (string | EnvelopeRecipient)[];
 }
 
 /**

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Client, type ClientOptions } from "./client.js";
 import { SMTPTransactionError } from "./errors.js";
 import { MockSmtpServer, type MockSmtpServerOptions } from "./internal/smtp/mock-server.js";
+import { AUTO_BDAT_THRESHOLD } from "./internal/smtp/transaction.js";
 import { Message } from "./message.js";
 
 const tls = {
@@ -262,6 +263,88 @@ describe("Client.sendRaw", () => {
     await expect(
       client.sendRaw({ from: "sender@example.com", to: [] }, encoder.encode("data")),
     ).rejects.toThrow(/no recipients/i);
+  });
+});
+
+describe("Client envelope options", () => {
+  it("sends a DELIVERBY deadline", async () => {
+    const server = await startServer({ extensions: [...defaultExtensions, "DELIVERBY 300"] });
+    const client = clientFor(server);
+
+    await client.send(message("sender@acme.example", "customer@example.com"), {
+      deliveryBy: { seconds: 3600, mode: "R" },
+    });
+
+    expect(server.mailFromLine).toContain("BY=3600;R");
+  });
+
+  it("rejects a DELIVERBY deadline the server does not support", async () => {
+    const server = await startServer();
+    const client = clientFor(server);
+
+    await expect(
+      client.send(message("sender@acme.example", "customer@example.com"), {
+        deliveryBy: { seconds: 3600, mode: "R" },
+      }),
+    ).rejects.toThrow(/DELIVERBY/);
+  });
+
+  it("sends DSN RET and ENVID parameters", async () => {
+    const server = await startServer({ extensions: [...defaultExtensions, "DSN"] });
+    const client = clientFor(server);
+
+    await client.send(message("sender@acme.example", "customer@example.com"), {
+      dsnRet: "FULL",
+      envid: "order-42",
+    });
+
+    expect(server.mailFromLine).toContain("RET=FULL");
+    expect(server.mailFromLine).toContain("ENVID=order-42");
+  });
+
+  it("sends per-recipient DSN parameters through sendRaw", async () => {
+    const server = await startServer({ extensions: [...defaultExtensions, "DSN"] });
+    const client = clientFor(server);
+
+    const result = await client.sendRaw(
+      {
+        from: "bounce@example.com",
+        to: [
+          {
+            address: "first@example.com",
+            notify: ["SUCCESS", "FAILURE"],
+            orcpt: "orig@example.com",
+          },
+          "second@example.com",
+        ],
+      },
+      encoder.encode("Subject: DSN\r\n\r\nbody"),
+    );
+
+    expect(result.code).toBe(250);
+    expect(server.rcptToLines[0]).toContain("NOTIFY=SUCCESS,FAILURE");
+    expect(server.rcptToLines[0]).toContain("ORCPT=rfc822;orig@example.com");
+    expect(server.rcptToLines[1]).not.toContain("NOTIFY");
+  });
+
+  it("reports the server reply after an automatic BDAT transfer", async () => {
+    const server = await startServer({
+      extensions: [...defaultExtensions, "CHUNKING"],
+      dataResponseMessage: "2.0.0 accepted; message_ref=<bdat-123>",
+    });
+    const client = clientFor(server);
+
+    const result = await client.send(
+      new Message()
+        .from("sender@acme.example")
+        .to("customer@example.com")
+        .text("x".repeat(AUTO_BDAT_THRESHOLD + 1)),
+    );
+
+    expect(server.bdatCommands).toBe(1);
+    expect(server.dataCommands).toBe(0);
+    expect(result.code).toBe(250);
+    expect(result.messageRef).toBe("bdat-123");
   });
 });
 

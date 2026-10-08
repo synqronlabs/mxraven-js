@@ -526,14 +526,22 @@ export class SmtpSession {
     const chunks = toAsyncChunks(data);
     const knownSize = data instanceof Uint8Array ? data.byteLength : undefined;
     if (options.preferBdat === true && this.hasExtension(smtpExtension.chunking)) {
-      await this.sendBdatChunked(chunks, options.chunkSize ?? DEFAULT_BDAT_CHUNK_SIZE, signal);
+      const response = await this.sendBdatChunked(
+        chunks,
+        options.chunkSize ?? DEFAULT_BDAT_CHUNK_SIZE,
+        signal,
+      );
+      result.response = response;
+      result.messageId = extractMessageId(response.message);
     } else if (
       autoBdat &&
       this.hasExtension(smtpExtension.chunking) &&
       knownSize !== undefined &&
       knownSize > AUTO_BDAT_THRESHOLD
     ) {
-      await this.sendBdatSingle(data as Uint8Array, signal);
+      const response = await this.sendBdatSingle(data as Uint8Array, signal);
+      result.response = response;
+      result.messageId = extractMessageId(response.message);
     } else {
       const response = await this.sendData(chunks, signal);
       result.response = response;
@@ -714,20 +722,21 @@ export class SmtpSession {
     return final;
   }
 
-  private async sendBdatSingle(data: Uint8Array, signal?: AbortSignal): Promise<void> {
+  private async sendBdatSingle(data: Uint8Array, signal?: AbortSignal): Promise<SmtpResponse> {
     await this.writeCommand(`BDAT ${data.byteLength} LAST`, signal);
     await this.writeBlock(data, signal);
     const response = await this.readReply(signal);
     if (!isSuccess(response.code)) {
       throw this.requireReplyError(response);
     }
+    return response;
   }
 
   private async sendBdatChunked(
     chunks: AsyncIterable<Uint8Array>,
     chunkSize: number,
     signal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<SmtpResponse> {
     if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
       throw new Error("smtp: BDAT chunk size must be positive");
     }
@@ -740,7 +749,7 @@ export class SmtpSession {
       if (!isSuccess(response.code)) {
         throw this.requireReplyError(response);
       }
-      return;
+      return response;
     }
 
     let current = first.value;
@@ -754,7 +763,7 @@ export class SmtpSession {
         throw this.requireReplyError(response);
       }
       if (isLast) {
-        return;
+        return response;
       }
       current = next.value;
     }

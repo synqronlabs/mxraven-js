@@ -5,8 +5,19 @@ import { parseAddress } from "./internal/address.js";
 import { SmtpDialer } from "./internal/smtp/dialer.js";
 import { SmtpTransactionError as InternalTransactionError } from "./internal/smtp/errors.js";
 import { SmtpPool } from "./internal/smtp/pool.js";
-import type { SmtpEnvelope, TransactionResult } from "./internal/smtp/transaction.js";
-import { Message, type BuiltMessage, type Envelope } from "./message.js";
+import type {
+  SmtpEnvelope,
+  SmtpRecipient,
+  TransactionResult,
+} from "./internal/smtp/transaction.js";
+import {
+  Message,
+  type BuiltMessage,
+  type DeliveryBy,
+  type DsnReturn,
+  type Envelope,
+  type EnvelopeRecipient,
+} from "./message.js";
 import { parseMessageRef, type Result } from "./result.js";
 
 /** The default mxRaven SMTP submission port. */
@@ -40,6 +51,22 @@ export interface ClientOptions {
 export interface SendOptions {
   /** Cancels the submission. */
   readonly signal?: AbortSignal;
+  /**
+   * Requests an RFC 2852 `DELIVERBY` deadline. The server must advertise
+   * `DELIVERBY`, and for mode `R` the interval must meet its advertised
+   * minimum.
+   */
+  readonly deliveryBy?: DeliveryBy;
+  /** Requests the RFC 3461 `RET` DSN return type. The server must advertise DSN. */
+  readonly dsnRet?: DsnReturn;
+  /** Sets the RFC 3461 `ENVID` envelope identifier. The server must advertise DSN. */
+  readonly envid?: string;
+  /**
+   * Additional `MAIL FROM` parameters. Names are upper-cased and used verbatim;
+   * a parameter without a value is emitted as a bare keyword. A `BY` entry is
+   * ignored when {@link SendOptions.deliveryBy} is set.
+   */
+  readonly extensionParams?: ReadonlyMap<string, string>;
 }
 
 const DEFAULT_POOL_SIZE = 5;
@@ -135,7 +162,7 @@ export class Client {
     }
     const built = await message.resolve();
     return this.transact(
-      (signal) => this.pool.send(this.toEnvelope(built), built.data, {}, signal),
+      (signal) => this.pool.send(this.toEnvelope(built, options), built.data, {}, signal),
       options.signal,
     );
   }
@@ -160,7 +187,7 @@ export class Client {
     data: Uint8Array | AsyncIterable<Uint8Array>,
     options: SendOptions = {},
   ): Promise<Result> {
-    const smtpEnvelope = this.envelopeFromPublic(envelope);
+    const smtpEnvelope = this.envelopeFromPublic(envelope, options);
     return this.transact(
       (signal) => this.pool.sendRaw(smtpEnvelope, data, {}, signal),
       options.signal,
@@ -183,26 +210,52 @@ export class Client {
     }
   }
 
-  private toEnvelope(built: BuiltMessage): SmtpEnvelope {
+  private toEnvelope(built: BuiltMessage, options: SendOptions): SmtpEnvelope {
     return {
       from: built.from,
       recipients: built.recipients.map((address) => ({ address })),
       size: built.size,
       smtpUtf8: built.smtpUtf8,
       bodyType: built.eightBitMime ? "8BITMIME" : undefined,
+      deliveryBy: options.deliveryBy,
+      dsnRet: options.dsnRet,
+      envid: options.envid,
+      extensionParams: options.extensionParams,
     };
   }
 
-  private envelopeFromPublic(envelope: Envelope): SmtpEnvelope {
+  private envelopeFromPublic(envelope: Envelope, options: SendOptions): SmtpEnvelope {
     const from =
       envelope.from === undefined || envelope.from.trim() === ""
         ? undefined
         : parseAddress(envelope.from);
     return {
       from,
-      recipients: envelope.to.map((address) => ({ address: parseAddress(address) })),
+      recipients: envelope.to.map(toSmtpRecipient),
+      deliveryBy: options.deliveryBy,
+      dsnRet: options.dsnRet,
+      envid: options.envid,
+      extensionParams: options.extensionParams,
     };
   }
+}
+
+/** Converts a public envelope recipient into its internal form. */
+function toSmtpRecipient(recipient: string | EnvelopeRecipient): SmtpRecipient {
+  if (typeof recipient === "string") {
+    return { address: parseAddress(recipient) };
+  }
+  return {
+    address: parseAddress(recipient.address),
+    dsnNotify: recipient.notify === undefined ? undefined : [...recipient.notify],
+    dsnOrcpt: recipient.orcpt === undefined ? undefined : normalizeOrcpt(recipient.orcpt),
+  };
+}
+
+/** Defaults a bare `ORCPT` value to the `rfc822` address type. */
+function normalizeOrcpt(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.includes(";") ? trimmed : `rfc822;${trimmed}`;
 }
 
 /** Converts an internal transaction result into the public result. */
