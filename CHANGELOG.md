@@ -1,5 +1,19 @@
 # @mxraven/mail
 
+## 0.2.4
+
+### Patch Changes
+
+- 9c74627: Fix BDAT transactions so the final server reply populates the public result.
+  Automatic BDAT sends (composed messages larger than 1 MiB) and chunked BDAT
+  sends previously returned `code: 0`, an empty `message`, and an empty
+  `messageRef` because the final reply was validated but never recorded.
+- 9c74627: Expose envelope extension parameters. `SendOptions` gains `deliveryBy`
+  (RFC 2852), `dsnRet` and `envid` (RFC 3461), and `extensionParams` for
+  additional `MAIL FROM` parameters. `Envelope.to` now accepts
+  `EnvelopeRecipient` objects with per-recipient DSN `notify` and `orcpt`
+  values alongside plain addresses.
+
 ## 0.2.3
 
 ### Patch Changes
