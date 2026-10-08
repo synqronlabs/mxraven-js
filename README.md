@@ -10,10 +10,6 @@ A TypeScript SDK for the mxRaven mail-facing runtime surfaces: SMTP submission,
 webhook verification and dispatch, inbound message parsing, and recipient
 feedback.
 
-It is the TypeScript counterpart of the Go SDK at
-[`github.com/synqronlabs/mxraven-go/mail`](https://github.com/synqronlabs/mxraven-go/tree/main/mail)
-and exposes the same capabilities behind an idiomatic TypeScript API.
-
 > **Status:** early development. The public API is not yet stable.
 
 ## Install
@@ -86,6 +82,37 @@ try {
   }
 }
 ```
+
+## Templates
+
+Templates are pluggable; the SDK ships only the contract. `Message.render()`
+accepts any object with a `render` function that returns HTML, plus optional
+text and subject:
+
+```ts
+import type { TemplateRenderer } from "@mxraven/mail";
+
+const renderer: TemplateRenderer<{ name: string }> = {
+  render: ({ name }) => ({
+    html: `<p>Hello ${name}</p>`,
+    text: `Hello ${name}`,
+  }),
+};
+
+await client.send(
+  new Message()
+    .from("Acme <noreply@acme.example>")
+    .to("customer@example.com")
+    .subject("Welcome")
+    .render(renderer, { name: "Ada" }),
+);
+```
+
+The renderer runs inside `send`, so asynchronous engines work. Its HTML
+replaces an explicit `.html()` body, and its text replaces an explicit
+`.text()` body when it returns one; an explicit `.subject()` always wins. When
+both text and HTML are present after rendering, the message is sent as
+`multipart/alternative`.
 
 ## Webhooks
 

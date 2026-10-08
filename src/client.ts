@@ -133,7 +133,7 @@ export class Client {
     if (!(message instanceof Message)) {
       throw new Error("mail: message is required");
     }
-    const built = message.build();
+    const built = await message.resolve();
     return this.transact(
       (signal) => this.pool.send(this.toEnvelope(built), built.data, {}, signal),
       options.signal,

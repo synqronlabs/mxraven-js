@@ -88,6 +88,26 @@ describe("Client.send", () => {
     expect(server.dataLines).toContain("Hello");
   });
 
+  it("renders a template before submission", async () => {
+    const server = await startServer();
+    const client = clientFor(server);
+
+    const result = await client.send(
+      new Message()
+        .from("Acme <noreply@acme.example>")
+        .to("customer@example.com")
+        .render(
+          { render: () => ({ html: "<p>Rendered</p>", text: "Rendered", subject: "Templated" }) },
+          null,
+        ),
+    );
+
+    expect(result.code).toBe(250);
+    const data = server.dataLines.join("\n");
+    expect(data).toContain("<p>Rendered</p>");
+    expect(data).toContain("Subject: Templated");
+  });
+
   it("uses a null reverse-path for a null sender", async () => {
     const server = await startServer();
     const client = clientFor(server);

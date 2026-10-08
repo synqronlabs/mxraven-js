@@ -15,3 +15,4 @@ export { SMTPError, SMTPTransactionError } from "./errors.js";
 export { Message } from "./message.js";
 export type { Attachment, Envelope, Header, MediaType } from "./message.js";
 export type { RecipientResult, Result } from "./result.js";
+export type { RenderedTemplate, TemplateRenderer } from "./template.js";

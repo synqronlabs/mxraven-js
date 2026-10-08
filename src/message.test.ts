@@ -3,6 +3,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { mailboxToString } from "./internal/address.js";
 import { Message } from "./message.js";
 import type { MediaType } from "./message.js";
+import type { TemplateRenderer } from "./template.js";
 
 /** Joins folded header continuation lines for assertions. */
 function unfoldHeaders(value: string): string {
@@ -236,5 +237,112 @@ describe("Message", () => {
       .build();
 
     expect(built.smtpUtf8).toBe(true);
+  });
+});
+
+describe("Message template rendering", () => {
+  const renderer: TemplateRenderer<{ name: string }> = {
+    render: ({ name }) => ({
+      html: `<p>Hello ${name}</p>`,
+      text: `Hello ${name}`,
+      subject: "Rendered subject",
+    }),
+  };
+
+  it("renders HTML, text, and subject through resolve", async () => {
+    const built = await new Message()
+      .from("noreply@acme.example")
+      .to("customer@example.com")
+      .render(renderer, { name: "Ada" })
+      .resolve();
+
+    expect(built.headerBlock).toContain("Subject: Rendered subject");
+    expect(built.headerBlock).toContain("multipart/alternative");
+    expect(built.body).toContain("<p>Hello Ada</p>");
+    expect(built.body).toContain("Hello Ada");
+  });
+
+  it("lets an explicit subject win over the rendered subject", async () => {
+    const built = await new Message()
+      .from("noreply@acme.example")
+      .to("customer@example.com")
+      .subject("Explicit")
+      .render(renderer, { name: "Ada" })
+      .resolve();
+
+    expect(built.headerBlock).toContain("Subject: Explicit");
+    expect(built.headerBlock).not.toContain("Rendered subject");
+  });
+
+  it("replaces an explicit HTML body with the rendered HTML", async () => {
+    const built = await new Message()
+      .from("noreply@acme.example")
+      .to("customer@example.com")
+      .html("<p>static</p>")
+      .render(renderer, { name: "Ada" })
+      .resolve();
+
+    expect(built.body).toContain("<p>Hello Ada</p>");
+    expect(built.body).not.toContain("static");
+  });
+
+  it("keeps explicit text when the renderer returns only HTML", async () => {
+    const htmlOnly: TemplateRenderer<null> = { render: () => ({ html: "<p>only html</p>" }) };
+    const built = await new Message()
+      .from("noreply@acme.example")
+      .to("customer@example.com")
+      .text("fallback text")
+      .render(htmlOnly, null)
+      .resolve();
+
+    expect(built.headerBlock).toContain("multipart/alternative");
+    expect(built.body).toContain("<p>only html</p>");
+    expect(built.body).toContain("fallback text");
+  });
+
+  it("supports asynchronous renderers", async () => {
+    const asyncRenderer: TemplateRenderer<string> = {
+      render: async (value) => ({ html: `<p>${value}</p>`, text: value }),
+    };
+    const built = await new Message()
+      .from("noreply@acme.example")
+      .to("customer@example.com")
+      .render(asyncRenderer, "async")
+      .resolve();
+
+    expect(built.body).toContain("<p>async</p>");
+  });
+
+  it("propagates renderer failures", async () => {
+    const failing: TemplateRenderer<null> = {
+      render: () => {
+        throw new Error("render exploded");
+      },
+    };
+
+    await expect(
+      new Message()
+        .from("noreply@acme.example")
+        .to("customer@example.com")
+        .render(failing, null)
+        .resolve(),
+    ).rejects.toThrow("render exploded");
+  });
+
+  it("rejects an invalid render result", async () => {
+    const invalid = { render: () => ({}) } as unknown as TemplateRenderer<null>;
+
+    await expect(
+      new Message()
+        .from("noreply@acme.example")
+        .to("customer@example.com")
+        .render(invalid, null)
+        .resolve(),
+    ).rejects.toThrow(/invalid result/);
+  });
+
+  it("rejects a renderer without a render function", () => {
+    const invalid = {} as unknown as TemplateRenderer<null>;
+    expect(() => new Message().render(invalid, null)).toThrow(/render function/);
   });
 });

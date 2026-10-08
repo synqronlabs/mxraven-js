@@ -23,6 +23,7 @@ import {
   type BodyPart,
   type MimeAttachment,
 } from "./internal/mime.js";
+import type { RenderedTemplate, TemplateRenderer } from "./template.js";
 
 /** A custom message header. */
 export interface Header {
@@ -187,6 +188,12 @@ export class Message {
   private inReplyToValue = "";
   private referencesValue: string[] = [];
   private dateValue: Date | undefined;
+  private template:
+    | {
+        readonly render: (input: unknown) => RenderedTemplate | Promise<RenderedTemplate>;
+        readonly input: unknown;
+      }
+    | undefined;
 
   /** Sets the envelope sender and the `From` header. */
   from(address: string): this {
@@ -313,6 +320,48 @@ export class Message {
   }
 
   /**
+   * Renders a template into the message body.
+   *
+   * The renderer runs inside `Client.send` before the message is built, so it
+   * may be asynchronous. When a renderer is attached, its HTML replaces any
+   * explicit `html()` body, and its text replaces an explicit `text()` body
+   * when it produces one; an explicit `subject()` always wins. When both text
+   * and HTML are present after rendering, the message is sent as
+   * `multipart/alternative`.
+   *
+   * Calling this more than once replaces the previous renderer. The builder is
+   * not mutated by rendering; each send resolves it anew.
+   *
+   * @param renderer - The template renderer, for example from a plugin package.
+   * @param input - The template representation the renderer understands.
+   * @returns This builder.
+   * @throws `Error` When the renderer does not provide a `render` function.
+   *
+   * @example
+   * ```ts
+   * await client.send(
+   *   new Message()
+   *     .from("Acme <noreply@acme.example>")
+   *     .to("customer@example.com")
+   *     .render(renderer, { name: "Ada" }),
+   * );
+   * ```
+   *
+   * @public
+   */
+  render<TInput>(renderer: TemplateRenderer<TInput>, input: TInput): this {
+    if (typeof renderer?.render !== "function") {
+      throw new Error("mail: renderer must provide a render function");
+    }
+    this.template = {
+      // The generic input is erased for storage; the renderer receives it back unchanged.
+      render: (value: unknown) => renderer.render(value as TInput),
+      input,
+    };
+    return this;
+  }
+
+  /**
    * Serializes the current state into a transmittable message.
    *
    * The returned value is a snapshot: later mutations of this builder do not affect it. The caller
@@ -323,8 +372,20 @@ export class Message {
    *   fields are missing.
    * @internal
    */
-  build(): BuiltMessage {
+  build(rendered?: RenderedTemplate): BuiltMessage {
     const problems: Error[] = [];
+
+    const text = rendered === undefined ? this.textBody : (rendered.text ?? this.textBody);
+    const html = rendered === undefined ? this.htmlBody : rendered.html;
+    let subject = this.subjectText;
+    if (subject === "" && rendered?.subject !== undefined) {
+      try {
+        validateHeaderValue(rendered.subject);
+        subject = rendered.subject;
+      } catch (error) {
+        problems.push(toError(error, "subject"));
+      }
+    }
 
     const from = this.parseOptional(this.fromAddress, "from", problems);
     const sender = this.parseOptional(this.senderAddress, "sender", problems);
@@ -361,8 +422,8 @@ export class Message {
     if (cc.length > 0) {
       headers.push({ name: "Cc", value: formatAddressList(cc) });
     }
-    if (this.subjectText !== "") {
-      headers.push({ name: "Subject", value: encodeHeaderValue(this.subjectText) });
+    if (subject !== "") {
+      headers.push({ name: "Subject", value: encodeHeaderValue(subject) });
     }
     if (this.messageIdValue !== "") {
       headers.push({ name: "Message-ID", value: wrapAngle(this.messageIdValue) });
@@ -391,11 +452,11 @@ export class Message {
       headers.push({ name: "Message-ID", value: `<${Date.now()}.${randomUUID()}@${domain}>` });
     }
 
-    const rendered = this.renderBody(problems);
-    if (rendered !== undefined) {
+    const body = this.renderBody(text, html, problems);
+    if (body !== undefined) {
       headers.push({ name: "MIME-Version", value: "1.0" });
-      headers.push({ name: "Content-Type", value: rendered.contentType });
-      headers.push({ name: "Content-Transfer-Encoding", value: rendered.contentTransferEncoding });
+      headers.push({ name: "Content-Type", value: body.contentType });
+      headers.push({ name: "Content-Transfer-Encoding", value: body.contentTransferEncoding });
     }
 
     if (problems.length > 0) {
@@ -403,12 +464,12 @@ export class Message {
     }
 
     const headerBlock = serializeHeaders(headers);
-    const data = Buffer.from(`${headerBlock}\r\n${rendered?.data ?? ""}`, "utf8");
+    const data = Buffer.from(`${headerBlock}\r\n${body?.data ?? ""}`, "utf8");
     return {
       from: this.isNullSender ? undefined : from,
       recipients,
       headerBlock,
-      body: rendered?.data ?? "",
+      body: body?.data ?? "",
       data,
       smtpUtf8: requiresSmtpUtf8(from, recipients, headers),
       size: data.byteLength,
@@ -416,20 +477,44 @@ export class Message {
     };
   }
 
+  /**
+   * Builds the message after resolving a pending template render.
+   *
+   * @returns The built message and its envelope.
+   * @throws `AggregateError` When the message is invalid.
+   * @throws `Error` When the renderer rejects or returns an invalid result.
+   * @internal
+   */
+  async resolve(): Promise<BuiltMessage> {
+    const template = this.template;
+    if (template === undefined) {
+      return this.build();
+    }
+    const rendered: unknown = await template.render(template.input);
+    if (!isRenderedTemplate(rendered)) {
+      throw new Error("mail: template renderer returned an invalid result");
+    }
+    return this.build(rendered);
+  }
+
   /** Renders the body, wrapping attachments in `multipart/mixed` when present. */
-  private renderBody(problems: Error[]): BodyPart | undefined {
+  private renderBody(
+    text: string | undefined,
+    html: string | undefined,
+    problems: Error[],
+  ): BodyPart | undefined {
     let bodyPart: BodyPart | undefined;
-    if (this.textBody !== undefined && this.htmlBody !== undefined) {
-      const alternative = buildMultipartAlternative(this.textBody, this.htmlBody);
+    if (text !== undefined && html !== undefined) {
+      const alternative = buildMultipartAlternative(text, html);
       bodyPart = {
         contentType: alternative.contentType,
         contentTransferEncoding: alternative.contentTransferEncoding,
         data: alternative.data,
       };
-    } else if (this.htmlBody !== undefined) {
-      bodyPart = renderTextBody("text/html; charset=utf-8", this.htmlBody);
-    } else if (this.textBody !== undefined) {
-      bodyPart = renderTextBody("text/plain; charset=utf-8", this.textBody);
+    } else if (html !== undefined) {
+      bodyPart = renderTextBody("text/html; charset=utf-8", html);
+    } else if (text !== undefined) {
+      bodyPart = renderTextBody("text/plain; charset=utf-8", text);
     }
 
     if (this.attachments.length === 0) {
@@ -503,6 +588,23 @@ export class Message {
 /** Normalizes a single address or array into an array. */
 function toArray(value: string | readonly string[]): readonly string[] {
   return typeof value === "string" ? [value] : value;
+}
+
+/** Reports whether a renderer result has the expected shape. */
+function isRenderedTemplate(value: unknown): value is RenderedTemplate {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  if (!("html" in value) || typeof value.html !== "string") {
+    return false;
+  }
+  if ("text" in value && value.text !== undefined && typeof value.text !== "string") {
+    return false;
+  }
+  if ("subject" in value && value.subject !== undefined && typeof value.subject !== "string") {
+    return false;
+  }
+  return true;
 }
 
 /** Renders a simple text or HTML body. */
