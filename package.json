@@ -1,6 +1,6 @@
 {
   "name": "@mxraven/mail",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "TypeScript SDK for the mxRaven mail runtime: SMTP submission, webhook verification, and recipient feedback.",
   "keywords": [
     "email",
