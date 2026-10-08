@@ -18,7 +18,9 @@ import {
 } from "./internal/headers.js";
 import {
   buildMultipartAlternative,
+  encodeQuotedPrintable,
   normalizeLineEndings,
+  selectTextEncoding,
   wrapAttachments,
   type BodyPart,
   type MimeAttachment,
@@ -146,6 +148,8 @@ export interface BuiltMessage {
   readonly data: Uint8Array;
   /** Whether the envelope requires the `SMTPUTF8` extension. */
   readonly smtpUtf8: boolean;
+  /** Whether the body contains non-ASCII bytes and requires `BODY=8BITMIME`. */
+  readonly eightBitMime: boolean;
   /** The approximate message size in bytes, including headers. */
   readonly size: number;
   /** The time the message was built. */
@@ -472,6 +476,7 @@ export class Message {
       body: body?.data ?? "",
       data,
       smtpUtf8: requiresSmtpUtf8(from, recipients, headers),
+      eightBitMime: body !== undefined && containsNonAscii(body.data),
       size: data.byteLength,
       builtAt: new Date(),
     };
@@ -610,10 +615,11 @@ function isRenderedTemplate(value: unknown): value is RenderedTemplate {
 /** Renders a simple text or HTML body. */
 function renderTextBody(contentType: string, body: string): BodyPart {
   const normalized = normalizeLineEndings(body);
+  const encoding = selectTextEncoding(normalized);
   return {
     contentType,
-    contentTransferEncoding: containsNonAscii(normalized) ? "8bit" : "7bit",
-    data: normalized,
+    contentTransferEncoding: encoding,
+    data: encoding === "quoted-printable" ? encodeQuotedPrintable(normalized) : normalized,
   };
 }
 

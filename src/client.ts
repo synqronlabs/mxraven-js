@@ -189,6 +189,7 @@ export class Client {
       recipients: built.recipients.map((address) => ({ address })),
       size: built.size,
       smtpUtf8: built.smtpUtf8,
+      bodyType: built.eightBitMime ? "8BITMIME" : undefined,
     };
   }
 

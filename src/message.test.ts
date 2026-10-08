@@ -50,6 +50,19 @@ describe("Message", () => {
     expect(built.body).toBe("<p>Hello</p>");
   });
 
+  it("quoted-printable-encodes an HTML body with over-long lines", () => {
+    const built = new Message()
+      .from("noreply@acme.example")
+      .to("customer@example.com")
+      .html(`<p>${"a".repeat(1200)}</p>`)
+      .build();
+
+    expect(built.headerBlock).toContain("Content-Transfer-Encoding: quoted-printable\r\n");
+    for (const line of built.body.split("\r\n")) {
+      expect(line.length).toBeLessThanOrEqual(1000);
+    }
+  });
+
   it("builds a multipart/alternative message for text and HTML", () => {
     const built = new Message()
       .from("noreply@acme.example")

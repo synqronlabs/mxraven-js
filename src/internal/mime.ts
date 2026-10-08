@@ -13,6 +13,9 @@ import { randomBytes } from "node:crypto";
 
 import { containsNonAscii } from "./address.js";
 
+/** The RFC 5322 line length limit, excluding the trailing CRLF. */
+const maxTextLineLength = 998;
+
 /** A fully rendered body with its content headers. */
 export interface BodyPart {
   /** The `Content-Type` field value. */
@@ -72,19 +75,68 @@ export function encodeBase64Lines(data: Uint8Array): string {
 
 /** Builds a `multipart/alternative` body from plain-text and HTML sources. */
 export function buildMultipartAlternative(text: string, html: string): MultipartResult {
-  const encoding = containsNonAscii(text) || containsNonAscii(html) ? "8bit" : "7bit";
+  const textEncoding = selectTextEncoding(text);
+  const htmlEncoding = selectTextEncoding(html);
   const boundary = generateBoundary();
 
   const parts: string[] = [];
-  parts.push(renderTextPart(boundary, "text/plain; charset=utf-8", encoding, text));
-  parts.push(renderTextPart(boundary, "text/html; charset=utf-8", encoding, html));
+  parts.push(renderTextPart(boundary, "text/plain; charset=utf-8", textEncoding, text));
+  parts.push(renderTextPart(boundary, "text/html; charset=utf-8", htmlEncoding, html));
   parts.push(`--${boundary}--\r\n`);
 
   return {
     contentType: `multipart/alternative; boundary="${boundary}"`,
-    contentTransferEncoding: encoding,
+    contentTransferEncoding: textEncoding === "8bit" || htmlEncoding === "8bit" ? "8bit" : "7bit",
     data: parts.join(""),
   };
+}
+
+/**
+ * Selects the `Content-Transfer-Encoding` for a text part.
+ *
+ * Content whose lines exceed the RFC 5322 limit is encoded with
+ * quoted-printable, because raw text cannot be wrapped without changing it.
+ * Shorter content is sent as-is: `8bit` when it contains non-ASCII, `7bit`
+ * otherwise.
+ */
+export function selectTextEncoding(value: string): "7bit" | "8bit" | "quoted-printable" {
+  if (hasLongLine(value)) {
+    return "quoted-printable";
+  }
+  return containsNonAscii(value) ? "8bit" : "7bit";
+}
+
+/** Encodes a value with quoted-printable transfer encoding. */
+export function encodeQuotedPrintable(value: string): string {
+  const bytes = Buffer.from(value, "utf8");
+  let output = "";
+  let lineLength = 0;
+  for (let index = 0; index < bytes.length; index += 1) {
+    const byte = bytes[index]!;
+    if (byte === 0x0d && bytes[index + 1] === 0x0a) {
+      output += "\r\n";
+      lineLength = 0;
+      index += 1;
+      continue;
+    }
+    const isPrintable = byte >= 0x21 && byte <= 0x7e && byte !== 0x3d;
+    const isSpaceOrTab = byte === 0x20 || byte === 0x09;
+    const atLineEnd =
+      (bytes[index + 1] === 0x0d && bytes[index + 2] === 0x0a) || index === bytes.length - 1;
+    let token: string;
+    if (isPrintable || (isSpaceOrTab && !atLineEnd)) {
+      token = String.fromCharCode(byte);
+    } else {
+      token = `=${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+    }
+    if (lineLength + token.length > 75) {
+      output += "=\r\n";
+      lineLength = 0;
+    }
+    output += token;
+    lineLength += token.length;
+  }
+  return output.endsWith("\r\n") ? output : `${output}\r\n`;
 }
 
 /**
@@ -135,13 +187,22 @@ function renderTextPart(
   encoding: string,
   body: string,
 ): string {
+  const content =
+    encoding === "quoted-printable"
+      ? encodeQuotedPrintable(normalizeLineEndings(body))
+      : ensureTrailingCrlf(normalizeLineEndings(body));
   return (
     `--${boundary}\r\n` +
     `Content-Type: ${contentType}\r\n` +
     `Content-Transfer-Encoding: ${encoding}\r\n` +
     "\r\n" +
-    ensureTrailingCrlf(normalizeLineEndings(body))
+    content
   );
+}
+
+/** Reports whether any line exceeds the RFC 5322 line length limit. */
+function hasLongLine(value: string): boolean {
+  return value.split(/\r\n|\r|\n/).some((line) => line.length > maxTextLineLength);
 }
 
 /** Formats a `Content-Disposition` value with an optional filename. */

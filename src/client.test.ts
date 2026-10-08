@@ -133,6 +133,46 @@ describe("Client.send", () => {
     expect(server.mailFromLine).toContain("SMTPUTF8");
   });
 
+  it("advertises BODY=8BITMIME for a message with a non-ASCII body", async () => {
+    const server = await startServer({ extensions: [...defaultExtensions, "8BITMIME"] });
+    const client = clientFor(server);
+
+    await client.send(
+      new Message()
+        .from("Acme <noreply@acme.example>")
+        .to("customer@example.com")
+        .subject("Test")
+        .text("Héllo — wörld"),
+    );
+
+    expect(server.mailFromLine).toContain("BODY=8BITMIME");
+  });
+
+  it("advertises BODY=8BITMIME when an attachment wraps an 8-bit body", async () => {
+    const server = await startServer({ extensions: [...defaultExtensions, "8BITMIME"] });
+    const client = clientFor(server);
+
+    await client.send(
+      new Message()
+        .from("Acme <noreply@acme.example>")
+        .to("customer@example.com")
+        .subject("Test")
+        .text("Héllo")
+        .attach({ filename: "note.txt", data: encoder.encode("hi") }),
+    );
+
+    expect(server.mailFromLine).toContain("BODY=8BITMIME");
+  });
+
+  it("omits BODY for a 7-bit body", async () => {
+    const server = await startServer({ extensions: [...defaultExtensions, "8BITMIME"] });
+    const client = clientFor(server);
+
+    await client.send(message("sender@acme.example", "customer@example.com"));
+
+    expect(server.mailFromLine).not.toContain("BODY=");
+  });
+
   it("sends concurrently through separate pooled connections", async () => {
     const server = await startServer();
     const client = clientFor(server, { poolSize: 5 });

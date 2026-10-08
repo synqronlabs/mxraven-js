@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildMultipartAlternative,
   encodeBase64Lines,
+  encodeQuotedPrintable,
   normalizeLineEndings,
+  selectTextEncoding,
   wrapAttachments,
 } from "./mime.js";
 
@@ -48,6 +50,45 @@ describe("buildMultipartAlternative", () => {
   it("selects 8bit when either part contains non-ASCII", () => {
     const result = buildMultipartAlternative("héllo", "<p>hello</p>");
     expect(result.contentTransferEncoding).toBe("8bit");
+  });
+
+  it("quoted-printable-encodes parts with over-long lines", () => {
+    const longHtml = `<p>${"a".repeat(1200)}</p>`;
+    const result = buildMultipartAlternative("hello", longHtml);
+    expect(result.data).toContain("Content-Transfer-Encoding: quoted-printable\r\n");
+    expect(result.contentTransferEncoding).toBe("7bit");
+    for (const line of result.data.split("\r\n")) {
+      expect(line.length).toBeLessThanOrEqual(1000);
+    }
+  });
+});
+
+describe("selectTextEncoding", () => {
+  it("selects 7bit for plain ASCII", () => {
+    expect(selectTextEncoding("hello")).toBe("7bit");
+  });
+
+  it("selects 8bit for short non-ASCII content", () => {
+    expect(selectTextEncoding("héllo")).toBe("8bit");
+  });
+
+  it("selects quoted-printable when a line exceeds the RFC 5322 limit", () => {
+    expect(selectTextEncoding("a".repeat(998))).toBe("7bit");
+    expect(selectTextEncoding("a".repeat(999))).toBe("quoted-printable");
+  });
+});
+
+describe("encodeQuotedPrintable", () => {
+  it("encodes non-ASCII bytes and trailing whitespace", () => {
+    expect(encodeQuotedPrintable("Héllo ")).toBe("H=C3=A9llo=20\r\n");
+  });
+
+  it("soft-wraps long lines within 76 characters", () => {
+    const encoded = encodeQuotedPrintable("a".repeat(200));
+    for (const line of encoded.split("\r\n")) {
+      expect(line.length).toBeLessThanOrEqual(76);
+    }
+    expect(encoded.replace(/=\r\n/g, "")).toBe(`${"a".repeat(200)}\r\n`);
   });
 });
 
