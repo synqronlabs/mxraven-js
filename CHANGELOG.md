@@ -1,5 +1,28 @@
 # @mxraven/mail
 
+## 0.3.0
+
+### Minor Changes
+
+- 033b1b3: Add `@mxraven/mail/notify`, a client notification consumer for the NATS
+  JetStream stream mxRaven publishes to when notifications are enabled for a
+  listener. `NotificationClient.connect` authenticates with the listener's
+  ordinary API key and resolves its durable consumer. `consume` decodes accepted
+  and attempt events, acknowledges successful handlers, redelivers failed ones
+  with exponential backoff, and stops on `stopConsuming`. `events` exposes the
+  same events as an async iterator for manual `ack`, `nak`, and `term` handling.
+  Accepted events reuse the webhook `InboundEmail` payload model; attempt events
+  are a camelCase `AttemptEvent` covering the SMTP, S3, and webhook channels.
+
+### Patch Changes
+
+- a286d05: Sync the webhook payload models with the statuses the runtime emits. The
+  `statusOutcome` values now include `invalid` for a webhook delivery task that
+  was rejected before an attempt, `terminalAction` includes
+  `TERMINAL_ACTION_TYPE_UNSPECIFIED`, and `DeliveryStatus` exposes the SMTP
+  delivery `reason` classification. These values already arrive on the wire and
+  now decode with their published types.
+
 ## 0.2.4
 
 ### Patch Changes
