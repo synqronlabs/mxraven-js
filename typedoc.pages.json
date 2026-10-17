@@ -4,7 +4,8 @@
     "src/index.ts",
     "src/webhook/index.ts",
     "src/feedback/index.ts",
-    "src/mime/index.ts"
+    "src/mime/index.ts",
+    "src/notify/index.ts"
   ],
   "entryPointStrategy": "resolve",
   "plugin": [],

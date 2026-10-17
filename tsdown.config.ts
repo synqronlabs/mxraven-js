@@ -1,7 +1,13 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/webhook/index.ts", "src/feedback/index.ts", "src/mime/index.ts"],
+  entry: [
+    "src/index.ts",
+    "src/webhook/index.ts",
+    "src/feedback/index.ts",
+    "src/mime/index.ts",
+    "src/notify/index.ts",
+  ],
   format: ["esm", "cjs"],
   platform: "node",
   dts: { sourcemap: true },

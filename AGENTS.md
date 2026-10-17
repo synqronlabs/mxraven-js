@@ -24,9 +24,11 @@ edge cases, but **never import from, depend on, or ship anything under `tmp/`**.
 ## Core Principles
 
 - Write code that is easy to read, review, test, and maintain.
-- Prefer the Node.js standard library. The SDK currently has **zero runtime
-  dependencies** and should keep it that way unless a dependency provides clear,
-  substantial value that cannot be reasonably implemented locally.
+- Prefer the Node.js standard library. The SDK keeps runtime dependencies to the
+  ones the client notification transport needs — `@nats-io/nats-core`,
+  `@nats-io/jetstream`, and `ws` — and should stay that way unless another
+  dependency provides clear, substantial value that cannot be reasonably
+  implemented locally.
 - Keep abstractions proportional to the problem. Do not add interfaces,
   generics, wrappers, or configuration layers speculatively.
 - Minimize the exported API. Every exported symbol is a long-lived compatibility
@@ -339,7 +341,11 @@ Before adding a dependency:
 3. Confirm it solves substantially more than a small local implementation would.
 4. Avoid exposing dependency-specific types through the public API.
 
-Prefer zero runtime dependencies. Dev dependencies for tooling are acceptable
+Prefer the Node.js standard library and keep the runtime dependency set small.
+The client notification consumer deliberately depends on the official NATS
+JavaScript client (`@nats-io/nats-core` and `@nats-io/jetstream`) and `ws` for
+the Node.js WebSocket transport; a correct NATS/JetStream implementation is not
+reasonable to maintain locally. Dev dependencies for tooling are acceptable
 when they are already part of the established toolchain.
 
 ## Security

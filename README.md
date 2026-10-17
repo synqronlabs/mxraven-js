@@ -7,8 +7,8 @@
 [![Node.js](https://img.shields.io/node/v/@mxraven/mail?label=NODE&color=fe7d37&style=for-the-badge)](https://nodejs.org)
 
 A TypeScript SDK for the mxRaven mail-facing runtime surfaces: SMTP submission,
-webhook verification and dispatch, inbound message parsing, and recipient
-feedback.
+webhook verification and dispatch, inbound message parsing, client
+notifications, and recipient feedback.
 
 > **Status:** early development. The public API is not yet stable.
 
@@ -327,14 +327,78 @@ fields first; `decode` operates on bytes alone, so it can be used without any
 request object.
 
 The runtime surfaces are published as separate entry points so the root import
-stays free of webhook and feedback code:
+stays free of webhook, notification, and feedback code:
 
 - `@mxraven/mail/webhook` — HMAC-SHA256 verification, typed event dispatch,
   payload decoding, and raw message download.
 - `@mxraven/mail/mime` — inbound message parsing into headers, addresses,
   bodies, and attachments.
+- `@mxraven/mail/notify` — client notification events over NATS JetStream.
 - `@mxraven/mail/feedback` — tenant spam/ham training and RFC 8058 one-click
   unsubscribes.
+
+### Client notifications
+
+Enable notifications for a listener with the administrative API, then consume
+that listener's accepted-message and delivery-attempt events over NATS. The
+client authenticates with the same API key used for SMTP submission and manages
+the WebSocket transport, acknowledgement, and redelivery:
+
+```ts
+import { NotificationClient } from "@mxraven/mail/notify";
+
+const secret = process.env.MXRAVEN_SECRET;
+if (secret === undefined || secret === "") {
+  throw new Error("MXRAVEN_SECRET is required");
+}
+
+const client = await NotificationClient.connect({
+  url: "wss://nats.mxraven.com",
+  username: "mxr_tx_ab12cd34ef56",
+  secret,
+  listener: listenerId,
+});
+
+await client.consume((event) => {
+  if (event.kind === "accepted") {
+    console.log("accepted", event.accepted.task_id);
+  } else {
+    console.log("attempt", event.attempt.taskId, event.attempt.channel, event.attempt.status);
+  }
+});
+```
+
+A handler that returns normally acknowledges the event. A handler that throws
+leaves it unacknowledged, and the server redelivers it with exponential backoff.
+Return `stopConsuming` to acknowledge the current event and stop. Cancellation
+with an `AbortSignal` and `client.close()` are normal stops and resolve the
+promise.
+
+An accepted event is the same payload a `DELIVER_WEBHOOK` delivery carries, so
+`event.accepted.raw_email` downloads with `fetchRawEmail` from
+`@mxraven/mail/webhook`. An attempt event is a camelCase `AttemptEvent` whose
+`channel` is `smtp`, `s3`, or `webhook`; `correlationId` joins it back to the
+accepted event's `task_id`.
+
+For manual acknowledgement, iterate events with `client.events()`. Each
+delivery exposes `ack()`, `nak({ delay })`, and `term()`:
+
+```ts
+for await (const { event, ack, nak } of client.events({ signal })) {
+  try {
+    await process(event);
+    ack();
+  } catch {
+    nak({ delay: 5_000 });
+  }
+}
+```
+
+The stream retains events for 24 hours regardless of acknowledgement, so a
+client that is offline longer than that cannot recover the gap. Connections
+that share one API key share one durable consumer: events are distributed
+between them, not duplicated to each. Use the `tls` option to trust a private
+certificate authority or present a client certificate.
 
 ### Feedback
 
@@ -376,6 +440,7 @@ replace, then shows one workflow:
 | `webhook-fastify.ts`       | Fastify with a buffer content-type parser                      |
 | `webhook-hono.ts`          | Hono on Workers/Deno/Bun, passing `Request` straight through   |
 | `parse-inbound.ts`         | Decoding an `.eml` file into headers, bodies, and attachments  |
+| `notifications.ts`         | Consuming client notification events from a NATS JetStream     |
 | `feedback.ts`              | Spam/ham training and one-click unsubscribe                    |
 
 ## Development
