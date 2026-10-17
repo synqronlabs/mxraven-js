@@ -34,6 +34,11 @@ export const statusOutcome = {
   expired: "expired",
   /** Delivery was skipped by a suppression rule. It is reported for SMTP deliveries only. */
   suppressed: "suppressed",
+  /**
+   * The delivery task was rejected before an attempt was made, for example
+   * because its destination was invalid. It is reported by webhook egress.
+   */
+  invalid: "invalid",
 } as const;
 
 /** The lifecycle state reported by a delivery-status webhook. */
@@ -45,6 +50,8 @@ export type StatusOutcome = (typeof statusOutcome)[keyof typeof statusOutcome];
  * Values are the mxRaven worker enum names.
  */
 export const terminalAction = {
+  /** The server did not record a terminal action. */
+  unspecified: "TERMINAL_ACTION_TYPE_UNSPECIFIED",
   /** Deliver through a dedicated IP pool. */
   deliverDedicated: "TERMINAL_ACTION_TYPE_DELIVER_DEDICATED",
   /** Relay through the configured smarthost. */
@@ -225,6 +232,8 @@ export interface DeliveryStatus {
   readonly smtp_code?: number;
   /** The RFC 3463 enhanced status code. */
   readonly enhanced_status_code?: string;
+  /** The bounded, machine-readable delivery classification. */
+  readonly reason?: string;
   /** The remote reply text, truncated to 512 bytes. */
   readonly remote_response?: string;
   /** The Unix time, in seconds, of the next attempt for a deferred status. */
