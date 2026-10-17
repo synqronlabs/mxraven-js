@@ -37,6 +37,22 @@ export class SMTPError extends Error {
 }
 
 /**
+ * The submission server did not advertise the `DELIVERBY` extension, so a
+ * requested delivery deadline (RFC 2852) cannot be honored.
+ *
+ * This is a local capability failure, not an SMTP reply; it is thrown before
+ * the transaction starts.
+ *
+ * @public
+ */
+export class DeliveryByUnsupportedError extends Error {
+  constructor() {
+    super("mail: server does not support DELIVERBY");
+    this.name = "DeliveryByUnsupportedError";
+  }
+}
+
+/**
  * A submission the server rejected after per-recipient results were collected.
  *
  * It is thrown when every envelope recipient was rejected. The per-recipient

@@ -11,7 +11,7 @@
 
 export { Client, defaultAddressPort } from "./client.js";
 export type { ClientOptions, SendOptions } from "./client.js";
-export { SMTPError, SMTPTransactionError } from "./errors.js";
+export { DeliveryByUnsupportedError, SMTPError, SMTPTransactionError } from "./errors.js";
 export { Message } from "./message.js";
 export type {
   Attachment,

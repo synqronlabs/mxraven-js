@@ -74,11 +74,18 @@ await client.sendRaw(
 ```ts
 await client.send(message, {
   deliveryBy: { seconds: 3600, mode: "R" }, // DELIVERBY; requires server support
+  requireTls: true, // REQUIRETLS; requires server support
   dsnRet: "FULL", // RET; requires DSN
   envid: "order-42", // ENVID; requires DSN
   extensionParams: new Map([["X-CUSTOM", "value"]]), // extra MAIL FROM parameters
 });
 ```
+
+`requireTls` sets the RFC 8689 `REQUIRETLS` parameter, requiring TLS on
+every delivery hop. The submission server must advertise `REQUIRETLS`;
+otherwise the send throws an `SMTPError` with code `550` and enhanced status
+`5.7.30`. Submission already uses STARTTLS, so the local TLS precondition is
+always met.
 
 Per-recipient DSN parameters go on the envelope, which `sendRaw` accepts as
 objects alongside plain addresses:
@@ -99,13 +106,16 @@ await client.sendRaw(
 );
 ```
 
-`deliveryBy` fails before transfer when the server does not advertise
-`DELIVERBY`, and mode `R` must meet the server's advertised minimum interval.
+`deliveryBy` fails with `DeliveryByUnsupportedError` when the server does not
+advertise `DELIVERBY`; mode `R` must meet the server's advertised minimum
+interval.
 
 ### Errors
 
 Rejected commands throw `SMTPError`; when every recipient is rejected,
-`SMTPTransactionError` is thrown with the per-recipient `result`.
+`SMTPTransactionError` is thrown with the per-recipient `result`. A requested
+`DELIVERBY` deadline on a server that does not advertise the extension throws
+`DeliveryByUnsupportedError` before the transaction starts.
 
 ```ts
 import { SMTPError } from "@mxraven/mail";

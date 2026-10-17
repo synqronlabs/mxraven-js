@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Client, type ClientOptions } from "./client.js";
-import { SMTPTransactionError } from "./errors.js";
+import { DeliveryByUnsupportedError, SMTPError, SMTPTransactionError } from "./errors.js";
 import { MockSmtpServer, type MockSmtpServerOptions } from "./internal/smtp/mock-server.js";
 import { AUTO_BDAT_THRESHOLD } from "./internal/smtp/transaction.js";
 import { Message } from "./message.js";
@@ -286,7 +286,46 @@ describe("Client envelope options", () => {
       client.send(message("sender@acme.example", "customer@example.com"), {
         deliveryBy: { seconds: 3600, mode: "R" },
       }),
-    ).rejects.toThrow(/DELIVERBY/);
+    ).rejects.toBeInstanceOf(DeliveryByUnsupportedError);
+  });
+
+  it("sends REQUIRETLS over TLS when the server supports it", async () => {
+    const server = await startServer({ extensions: [...defaultExtensions, "REQUIRETLS"] });
+    const client = clientFor(server);
+
+    await client.send(message("sender@acme.example", "customer@example.com"), {
+      requireTls: true,
+    });
+
+    expect(server.mailFromLine).toContain("MAIL FROM:<sender@acme.example>");
+    expect(server.mailFromLine).toContain("REQUIRETLS");
+  });
+
+  it("sends REQUIRETLS through sendRaw when the server supports it", async () => {
+    const server = await startServer({ extensions: [...defaultExtensions, "REQUIRETLS"] });
+    const client = clientFor(server);
+
+    await client.sendRaw(
+      { from: "sender@example.com", to: ["rcpt@example.net"] },
+      encoder.encode("Subject: Secure\r\n\r\nbody"),
+      { requireTls: true },
+    );
+
+    expect(server.mailFromLine).toBe("MAIL FROM:<sender@example.com> REQUIRETLS");
+  });
+
+  it("rejects REQUIRETLS when the server does not advertise it", async () => {
+    const server = await startServer();
+    const client = clientFor(server);
+
+    const error = await client
+      .send(message("sender@acme.example", "customer@example.com"), { requireTls: true })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SMTPError);
+    const smtpError = error as SMTPError;
+    expect(smtpError.code).toBe(550);
+    expect(smtpError.enhancedCode).toBe("5.7.30");
   });
 
   it("sends DSN RET and ENVID parameters", async () => {

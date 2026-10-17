@@ -1,9 +1,13 @@
 import type { ConnectionOptions as TlsConnectionOptions } from "node:tls";
 
-import { SMTPTransactionError } from "./errors.js";
+import { DeliveryByUnsupportedError, SMTPTransactionError } from "./errors.js";
 import { parseAddress } from "./internal/address.js";
 import { SmtpDialer } from "./internal/smtp/dialer.js";
-import { SmtpTransactionError as InternalTransactionError } from "./internal/smtp/errors.js";
+import {
+  SmtpSessionError as InternalSessionError,
+  SmtpTransactionError as InternalTransactionError,
+  smtpSessionErrorKind,
+} from "./internal/smtp/errors.js";
 import { SmtpPool } from "./internal/smtp/pool.js";
 import type {
   SmtpEnvelope,
@@ -61,6 +65,12 @@ export interface SendOptions {
   readonly dsnRet?: DsnReturn;
   /** Sets the RFC 3461 `ENVID` envelope identifier. The server must advertise DSN. */
   readonly envid?: string;
+  /**
+   * Requests the RFC 8689 `REQUIRETLS` parameter, requiring TLS on every
+   * delivery hop. The submission server must advertise `REQUIRETLS` or the
+   * send fails with an {@link SMTPError}.
+   */
+  readonly requireTls?: boolean;
   /**
    * Additional `MAIL FROM` parameters. Names are upper-cased and used verbatim;
    * a parameter without a value is emitted as a bare keyword. A `BY` entry is
@@ -218,6 +228,7 @@ export class Client {
       smtpUtf8: built.smtpUtf8,
       bodyType: built.eightBitMime ? "8BITMIME" : undefined,
       deliveryBy: options.deliveryBy,
+      requireTls: options.requireTls,
       dsnRet: options.dsnRet,
       envid: options.envid,
       extensionParams: options.extensionParams,
@@ -233,6 +244,7 @@ export class Client {
       from,
       recipients: envelope.to.map(toSmtpRecipient),
       deliveryBy: options.deliveryBy,
+      requireTls: options.requireTls,
       dsnRet: options.dsnRet,
       envid: options.envid,
       extensionParams: options.extensionParams,
@@ -277,6 +289,12 @@ function toResult(transaction: TransactionResult): Result {
 function translateError(error: unknown): Error {
   if (error instanceof InternalTransactionError) {
     return new SMTPTransactionError(error.message, toResult(error.result));
+  }
+  if (
+    error instanceof InternalSessionError &&
+    error.kind === smtpSessionErrorKind.deliveryByNotSupported
+  ) {
+    return new DeliveryByUnsupportedError();
   }
   if (error instanceof Error) {
     return error;
