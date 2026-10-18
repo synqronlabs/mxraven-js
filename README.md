@@ -29,7 +29,7 @@ if (secret === undefined || secret === "") {
 }
 
 const client = new Client({
-  host: "smtp.mxraven.com",
+  host: "smtp.mxraven.email",
   username: "mxr_tx_ab12cd34ef56",
   secret,
 });
@@ -425,7 +425,7 @@ if (secret === undefined || secret === "") {
 }
 
 const feedback = new Client({
-  baseUrl: "https://feedback.mxraven.com",
+  baseUrl: "https://api.mxraven.com",
   username: "mxr_tx_ab12cd34ef56",
   secret,
 });

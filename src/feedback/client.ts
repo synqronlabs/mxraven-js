@@ -36,7 +36,7 @@ export interface LearningResult {
 
 /** Options for a {@link Client}. */
 export interface ClientOptions {
-  /** The feedback service base URL, for example `https://feedback.mxraven.com`. */
+  /** The feedback service base URL, for example `https://api.mxraven.com`. */
   readonly baseUrl: string;
   /** The submission API key username. Required for learning. */
   readonly username?: string;
@@ -77,7 +77,7 @@ const MAX_RESULT_BODY = 64 * 1024;
  * }
  *
  * const client = new Client({
- *   baseUrl: "https://feedback.mxraven.com",
+ *   baseUrl: "https://api.mxraven.com",
  *   username: "mxr_tx_ab12cd34ef56",
  *   secret,
  * });

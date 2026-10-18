@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { Client } from "@mxraven/mail/feedback";
 
 // Replace these with your submission credentials from the mxRaven dashboard.
-const MXRAVEN_FEEDBACK_URL = "https://feedback.mxraven.email";
+const MXRAVEN_FEEDBACK_URL = "https://api.mxraven.com";
 const MXRAVEN_USERNAME = "mxr_tx_ab12cd34ef56";
 const MXRAVEN_SECRET = "your-submission-secret";
 

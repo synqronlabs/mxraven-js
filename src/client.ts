@@ -96,7 +96,7 @@ const DEFAULT_POOL_SIZE = 5;
  * }
  *
  * const client = new Client({
- *   host: "smtp.mxraven.com",
+ *   host: "smtp.mxraven.email",
  *   username: "mxr_tx_ab12cd34ef56",
  *   secret,
  * });
