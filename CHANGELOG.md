@@ -1,5 +1,15 @@
 # @mxraven/mail
 
+## 0.4.1
+
+### Patch Changes
+
+- Use the published production hosts in examples and TSDoc: SMTP submission at
+  `smtp.mxraven.email` on port 587 (STARTTLS; implicit TLS on 465 is not
+  published), recipient feedback at the `https://api.mxraven.com` base URL (the
+  client appends `/v1/feedback/...`), and the client notification stream at
+  `wss://notifications.mxraven.com`.
+
 ## 0.4.0
 
 ### Minor Changes
