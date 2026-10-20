@@ -10,7 +10,7 @@
  * import { NotificationClient } from "@mxraven/mail/notify";
  *
  * const client = await NotificationClient.connect({
- *   url: "wss://nats.mxraven.com",
+ *   url: "wss://notifications.mxraven.com",
  *   username: "mxr_tx_ab12cd34ef56",
  *   secret: process.env.MXRAVEN_SECRET!,
  *   listener: listenerId,

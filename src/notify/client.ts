@@ -41,7 +41,7 @@ const RETRY_MAX = 30_000;
  * @example
  * ```ts
  * const client = await NotificationClient.connect({
- *   url: "wss://nats.mxraven.com",
+ *   url: "wss://notifications.mxraven.com",
  *   username: "mxr_tx_ab12cd34ef56",
  *   secret: process.env.MXRAVEN_SECRET!,
  *   listener: listenerId,
@@ -83,7 +83,7 @@ export class NotificationClient {
    * @example
    * ```ts
    * const client = await NotificationClient.connect({
-   *   url: "wss://nats.mxraven.com",
+   *   url: "wss://notifications.mxraven.com",
    *   username: "mxr_tx_ab12cd34ef56",
    *   secret: process.env.MXRAVEN_SECRET!,
    *   listener: "0b0b0b0b-1111-2222-3333-444444444444",

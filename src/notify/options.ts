@@ -39,7 +39,7 @@ export interface NotificationTlsOptions {
 export interface NotificationClientOptions {
   /**
    * The client notification tier WebSocket URL, for example
-   * `wss://nats.mxraven.com`. Only the `ws:` and `wss:` schemes are accepted.
+   * `wss://notifications.mxraven.com`. Only the `ws:` and `wss:` schemes are accepted.
    */
   readonly url: string;
   /**

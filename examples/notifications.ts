@@ -2,7 +2,7 @@
 import { NotificationClient, stopConsuming } from "@mxraven/mail/notify";
 
 // Replace these with the listener API key and listener ID from the dashboard.
-const MXRAVEN_NATS_URL = "wss://nats.mxraven.com";
+const MXRAVEN_NATS_URL = "wss://notifications.mxraven.com";
 const MXRAVEN_USERNAME = "mxr_tx_ab12cd34ef56";
 const MXRAVEN_SECRET = "your-api-key-secret";
 const LISTENER_ID = "0b0b0b0b-1111-2222-3333-444444444444";
