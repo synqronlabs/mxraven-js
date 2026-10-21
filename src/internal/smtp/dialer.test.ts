@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parseAddress } from "../address.js";
+import { parseAddress } from "../../address.js";
 import { SmtpDialer, type SmtpDialerOptions } from "./dialer.js";
 import { MockSmtpServer, type MockSmtpServerOptions } from "./mock-server.js";
 import type { SmtpEnvelope } from "./transaction.js";

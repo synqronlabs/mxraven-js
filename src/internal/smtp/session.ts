@@ -10,7 +10,7 @@
 import { isIP } from "node:net";
 import type { ConnectionOptions as TlsConnectionOptions } from "node:tls";
 
-import { mailboxToString } from "../address.js";
+import { mailboxToString } from "../../address.js";
 import { encodeLoginAuth, encodePlainAuth, selectAuthMechanism } from "./auth.js";
 import { LineConnection, type OpenConnectionOptions } from "./connection.js";
 import { SmtpSessionError, SmtpTransactionError, smtpSessionErrorKind } from "./errors.js";

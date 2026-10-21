@@ -11,7 +11,7 @@
 import { Buffer } from "node:buffer";
 import { randomBytes } from "node:crypto";
 
-import { containsNonAscii } from "./address.js";
+import { containsNonAscii } from "./ascii.js";
 
 /** The RFC 5322 line length limit, excluding the trailing CRLF. */
 const maxTextLineLength = 998;

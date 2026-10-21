@@ -4,8 +4,8 @@
  * @internal
  */
 
+import { mailboxToString, type MailboxAddress } from "../../address.js";
 import { SMTPError } from "../../errors.js";
-import { mailboxToString, type MailboxAddress } from "../address.js";
 import {
   formatDsnEnvelopeId,
   formatDsnOriginalRecipient,

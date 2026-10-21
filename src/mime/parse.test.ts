@@ -258,3 +258,101 @@ describe("parseEmail", () => {
     expect(new TextDecoder().decode(email.attachments[0]?.content)).toBe("payload");
   });
 });
+
+describe("parseEmail address headers", () => {
+  it("decodes a raw UTF-8 display name", () => {
+    const raw = [
+      "From: Jöhn Ünïcode <john@example.com>",
+      "Content-Type: text/plain",
+      "",
+      "body",
+    ].join("\r\n");
+
+    expect(parseEmail(encode(raw)).from).toEqual([
+      { address: "john@example.com", name: "Jöhn Ünïcode" },
+    ]);
+  });
+
+  it("normalizes an internationalized and mixed-case domain", () => {
+    const raw = [
+      "To: User <User@Example.COM>, user@例え.jp",
+      "Content-Type: text/plain",
+      "",
+      "body",
+    ].join("\r\n");
+
+    expect(parseEmail(encode(raw)).to).toEqual([
+      { address: "User@example.com", name: "User" },
+      { address: "user@xn--r8jz45g.jp" },
+    ]);
+  });
+
+  it("decodes an encoded display name once", () => {
+    const raw = [
+      "From: =?UTF-8?B?PT9VVEYtOD9CP1N3PT0/PQ==?= <a@b.com>",
+      "Content-Type: text/plain",
+      "",
+      "body",
+    ].join("\r\n");
+
+    expect(parseEmail(encode(raw)).from).toEqual([
+      { address: "a@b.com", name: "=?UTF-8?B?Sw==?=" },
+    ]);
+  });
+
+  it("parses an address header split across folded lines", () => {
+    const raw = [
+      "To: Jane Doe",
+      " <jane@example.com>",
+      "Content-Type: text/plain",
+      "",
+      "body",
+    ].join("\r\n");
+
+    expect(parseEmail(encode(raw)).to).toEqual([{ address: "jane@example.com", name: "Jane Doe" }]);
+  });
+
+  it("expands an address group", () => {
+    const raw = [
+      'To: Friends: a@example.com, "Doe, John" <j@example.com>;',
+      "Content-Type: text/plain",
+      "",
+      "body",
+    ].join("\r\n");
+
+    expect(parseEmail(encode(raw)).to).toEqual([
+      { address: "a@example.com" },
+      { address: "j@example.com", name: "Doe, John" },
+    ]);
+  });
+
+  it("contributes no addresses for an empty group", () => {
+    const raw = ["To: undisclosed-recipients:;", "Content-Type: text/plain", "", "body"].join(
+      "\r\n",
+    );
+
+    expect(parseEmail(encode(raw)).to).toEqual([]);
+  });
+
+  it("tolerates obsolete list syntax", () => {
+    const raw = ["To: a@example.com,, b@example.com,", "Content-Type: text/plain", "", "body"].join(
+      "\r\n",
+    );
+
+    expect(parseEmail(encode(raw)).to).toEqual([
+      { address: "a@example.com" },
+      { address: "b@example.com" },
+    ]);
+  });
+
+  it("keeps the raw address when a mailbox is malformed", () => {
+    const raw = ["To: not-an-address, ok@example.com", "Content-Type: text/plain", "", "body"].join(
+      "\r\n",
+    );
+
+    expect(parseEmail(encode(raw)).to).toEqual([
+      { address: "not-an-address" },
+      { address: "ok@example.com" },
+    ]);
+  });
+});

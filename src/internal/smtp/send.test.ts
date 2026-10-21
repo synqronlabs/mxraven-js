@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { parseAddress } from "../../address.js";
 import { SMTPError } from "../../errors.js";
-import { parseAddress } from "../address.js";
 import { MockSmtpServer, type MockSmtpServerOptions } from "./mock-server.js";
 import { SmtpSession, type SmtpSessionOptions } from "./session.js";
 import { AUTO_BDAT_THRESHOLD, type SmtpEnvelope } from "./transaction.js";

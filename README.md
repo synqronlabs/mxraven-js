@@ -118,7 +118,7 @@ Rejected commands throw `SMTPError`; when every recipient is rejected,
 `DeliveryByUnsupportedError` before the transaction starts.
 
 ```ts
-import { SMTPError } from "@mxraven/mail";
+import { AddressError, SMTPError, addressErrorKind } from "@mxraven/mail";
 
 try {
   await client.send(message);
@@ -126,8 +126,47 @@ try {
   if (error instanceof SMTPError && error.permanent) {
     // 5xx: do not retry the same message.
   }
+  if (error instanceof AggregateError) {
+    for (const problem of error.errors) {
+      if (problem instanceof AddressError && problem.kind === addressErrorKind.invalidDomain) {
+        // The address's domain is not a valid DNS name or IDN.
+      }
+    }
+  }
 }
 ```
+
+Addresses are parsed with the RFC 5322 mailbox grammar and normalized before
+use: internationalized domains become Punycode, domains are lowercased, quoted
+local parts are unquoted, and RFC 2047 display names are decoded. Validation
+follows the RFC 5321 length limits, so an address that cannot be put on the
+wire fails at build time with an `AddressError` whose `kind` is one of
+`addressErrorKind`.
+
+### Addresses
+
+`parseAddress` and `parseAddressList` expose that parser, so you can validate or
+normalize an address without building a message. They return a
+`MailboxAddress` (`localPart`, `domain`, `displayName`), the same normalized
+value the SDK puts on the wire; `parseAddressList` expands groups and is what to
+use for a header such as `To` or `Cc`.
+
+```ts
+import { parseAddress, parseAddressList } from "@mxraven/mail";
+
+const sender = parseAddress("Acme <Noreply@例え.jp>");
+// { localPart: "Noreply", domain: "xn--r8jz45g.jp", displayName: "Acme" }
+
+parseAddressList('Friends: "Doe, John" <j@example.com>, a@example.com;');
+// two mailboxes; the group name and empty group "undisclosed-recipients:;" are
+// not addresses
+```
+
+Rejections throw `AddressError` with a stable `kind`, so no message matching is
+needed. A comment is not a display name, so `user@example.com (Bob)` parses
+without one, and an address that cannot be sent — a bad domain label, an
+invalid IP literal, an over-long local part, or a decoded control character — is
+rejected rather than silently normalized.
 
 ## Templates
 

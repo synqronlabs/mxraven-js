@@ -2,13 +2,14 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
 import {
-  containsNonAscii,
   encodeRfc2047,
   formatAddress,
   formatAddressList,
   parseAddress,
   type MailboxAddress,
-} from "./internal/address.js";
+} from "./address.js";
+import { AddressError } from "./errors.js";
+import { containsNonAscii } from "./internal/ascii.js";
 import {
   getHeader,
   serializeHeaders,
@@ -733,8 +734,17 @@ function pad2(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-/** Adds context to an unknown thrown value. */
+/**
+ * Wraps a validation problem with the field it belongs to.
+ *
+ * An {@link AddressError} keeps its kind so callers can still branch on the
+ * failure after it has been collected into the build's `AggregateError`.
+ */
 function toError(error: unknown, label: string): Error {
   const message = error instanceof Error ? error.message : String(error);
-  return new Error(`mail: invalid ${label}: ${message}`, { cause: error });
+  const text = `mail: invalid ${label}: ${message}`;
+  if (error instanceof AddressError) {
+    return new AddressError({ kind: error.kind, message: text, cause: error });
+  }
+  return new Error(text, { cause: error });
 }

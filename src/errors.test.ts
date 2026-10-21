@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { SMTPError } from "./errors.js";
+import { AddressError, SMTPError, addressErrorKind } from "./errors.js";
 
 describe("SMTPError", () => {
   it("reports permanent failures", () => {
@@ -36,5 +36,27 @@ describe("SMTPError", () => {
     const error = new SMTPError({ code, message: "reply" });
     expect(error.transient).toBe(transient);
     expect(error.permanent).toBe(permanent);
+  });
+});
+
+describe("AddressError", () => {
+  it("carries a stable kind and the underlying cause", () => {
+    const cause = new Error("inner");
+    const error = new AddressError({
+      kind: addressErrorKind.invalidDomain,
+      message: "mail: invalid domain",
+      cause,
+    });
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.name).toBe("AddressError");
+    expect(error.kind).toBe("invalid-domain");
+    expect(error.cause).toBe(cause);
+  });
+
+  it("omits the cause when none is supplied", () => {
+    const error = new AddressError({ kind: addressErrorKind.missingAt, message: "mail: no @" });
+    expect(error.cause).toBeUndefined();
+    expect(error.kind).toBe(addressErrorKind.missingAt);
   });
 });

@@ -11,7 +11,7 @@
 
 import { Buffer } from "node:buffer";
 
-import { mailboxToString, parseAddress } from "../internal/address.js";
+import { mailboxToString, parseAddress, parseAddressList } from "../address.js";
 
 /** Maximum MIME nesting depth. */
 const MAX_DEPTH = 20;
@@ -487,19 +487,28 @@ function decodeQEncodedWord(value: string): Uint8Array {
  * then RFC 2047 encoded words are decoded.
  */
 function decodeHeaderText(value: string): string {
-  let text = value;
-  if (/[\u0080-\u00ff]/.test(value)) {
-    const bytes = new Uint8Array(value.length);
-    for (let index = 0; index < value.length; index += 1) {
-      bytes[index] = value.charCodeAt(index) % 256;
-    }
-    try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    } catch {
-      text = value;
-    }
+  return decodeEncodedWords(reinterpretHeaderBytes(value));
+}
+
+/**
+ * Reinterprets a Latin-1 header string as UTF-8 when it decodes cleanly.
+ *
+ * Header bytes are read as Latin-1 so that arbitrary octets survive, which
+ * turns unencoded UTF-8 text into mojibake; this recovers the original.
+ */
+function reinterpretHeaderBytes(value: string): string {
+  if (!/[\u0080-\u00ff]/.test(value)) {
+    return value;
   }
-  return decodeEncodedWords(text);
+  const bytes = new Uint8Array(value.length);
+  for (let index = 0; index < value.length; index += 1) {
+    bytes[index] = value.charCodeAt(index) % 256;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return value;
+  }
 }
 
 /** Decodes an optional header value, returning `undefined` when absent. */
@@ -537,6 +546,24 @@ function headerAddressList(headers: readonly ParsedHeader[], name: string): Pars
   if (value === undefined || value.trim() === "") {
     return [];
   }
+  // Header bytes were decoded as Latin-1 so they survive intact; recover UTF-8
+  // before parsing so display names and internationalized addresses are read
+  // correctly. Encoded-words are decoded by the address parser itself.
+  const unfolded = reinterpretHeaderBytes(value);
+  try {
+    return parseAddressList(unfolded).map((mailbox) => ({
+      address: mailboxToString(mailbox),
+      name: mailbox.displayName,
+    }));
+  } catch {
+    // A malformed entry must not discard the rest of the header, so fall back to
+    // salvaging each comma-separated piece on its own.
+    return salvageAddressList(unfolded);
+  }
+}
+
+/** Parses what it can from a malformed address-list header. */
+function salvageAddressList(value: string): ParsedAddress[] {
   const addresses: ParsedAddress[] = [];
   for (const piece of splitAddressList(value)) {
     const trimmed = piece.trim();
@@ -597,11 +624,7 @@ function splitAddressList(value: string): string[] {
 function parseOneAddress(piece: string): ParsedAddress {
   try {
     const mailbox = parseAddress(piece);
-    const name =
-      mailbox.displayName === undefined || mailbox.displayName === ""
-        ? undefined
-        : decodeHeaderText(mailbox.displayName);
-    return { address: mailboxToString(mailbox), name };
+    return { address: mailboxToString(mailbox), name: mailbox.displayName };
   } catch {
     const match = /<([^<>]*)>\s*$/.exec(piece);
     return { address: (match?.[1] ?? piece).trim() };

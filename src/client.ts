@@ -1,7 +1,7 @@
 import type { ConnectionOptions as TlsConnectionOptions } from "node:tls";
 
+import { parseAddress } from "./address.js";
 import { DeliveryByUnsupportedError, SMTPTransactionError } from "./errors.js";
-import { parseAddress } from "./internal/address.js";
 import { SmtpDialer } from "./internal/smtp/dialer.js";
 import {
   SmtpSessionError as InternalSessionError,

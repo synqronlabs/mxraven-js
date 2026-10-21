@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parseAddress } from "../address.js";
+import { parseAddress } from "../../address.js";
 import { SmtpDialer } from "./dialer.js";
 import { SmtpAbortError } from "./errors.js";
 import { MockSmtpServer, type MockSmtpServerOptions } from "./mock-server.js";

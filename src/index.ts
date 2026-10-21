@@ -9,9 +9,18 @@
  * @packageDocumentation
  */
 
+export { parseAddress, parseAddressList } from "./address.js";
+export type { MailboxAddress } from "./address.js";
 export { Client, defaultAddressPort } from "./client.js";
 export type { ClientOptions, SendOptions } from "./client.js";
-export { DeliveryByUnsupportedError, SMTPError, SMTPTransactionError } from "./errors.js";
+export {
+  AddressError,
+  addressErrorKind,
+  DeliveryByUnsupportedError,
+  SMTPError,
+  SMTPTransactionError,
+} from "./errors.js";
+export type { AddressErrorKind } from "./errors.js";
 export { Message } from "./message.js";
 export type {
   Attachment,

@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { mailboxToString } from "./internal/address.js";
+import { mailboxToString } from "./address.js";
+import { AddressError, addressErrorKind } from "./errors.js";
 import { Message } from "./message.js";
 import type { MediaType } from "./message.js";
 import type { TemplateRenderer } from "./template.js";
@@ -235,10 +236,42 @@ describe("Message", () => {
 
   it.each([
     ["non-ASCII local part", "üser@example.com", "a@example.com"],
-    ["non-ASCII domain", "user@münchen.de", "a@example.com"],
+    ["non-ASCII local part on a recipient", "a@example.com", "üser@example.com"],
   ])("flags SMTPUTF8 for a %s", (_name, from, to) => {
     const built = new Message().from(from).to(to).text("Hi").build();
     expect(built.smtpUtf8).toBe(true);
+  });
+
+  it("does not flag SMTPUTF8 for an internationalized domain", () => {
+    // The domain is Punycode-encoded, so the envelope is pure ASCII.
+    const built = new Message().from("user@münchen.de").to("a@example.com").text("Hi").build();
+    expect(built.smtpUtf8).toBe(false);
+    expect(built.headerBlock).toContain("From: user@xn--mnchen-3ya.de\r\n");
+  });
+
+  it("keeps the address error kind inside the build AggregateError", () => {
+    let thrown: unknown;
+    try {
+      new Message().from("user@例え-.jp").to("a@example.com").text("Hi").build();
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(AggregateError);
+    const problems = (thrown as AggregateError).errors;
+    const addressProblem = problems.find((problem) => problem instanceof AddressError);
+    expect(addressProblem).toBeInstanceOf(AddressError);
+    expect(addressProblem?.kind).toBe(addressErrorKind.invalidDomain);
+  });
+
+  it("formats a display name into the expected header", () => {
+    const built = new Message()
+      .from("Jöhn <john@example.com>")
+      .to("a@example.com")
+      .text("Hi")
+      .build();
+
+    expect(built.headerBlock).toContain("From: =?UTF-8?B?SsO2aG4=?= <john@example.com>\r\n");
   });
 
   it("flags SMTPUTF8 for a non-ASCII header value", () => {
