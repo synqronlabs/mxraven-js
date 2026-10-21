@@ -390,6 +390,11 @@ An accepted event is the same payload a `DELIVER_WEBHOOK` delivery carries, so
 `channel` is `smtp`, `s3`, or `webhook`; `correlationId` joins it back to the
 accepted event's `task_id`.
 
+`messageRef` (`message_ref` on the accepted payload) joins an event to the send
+that produced it: `send()` reports the same value as `result.messageRef`. It is
+the only identifier in an event that the caller already holds, and it groups the
+attempts of a fan-out that otherwise have distinct task IDs.
+
 For manual acknowledgement, iterate events with `client.events()`. Each
 delivery exposes `ack()`, `nak({ delay })`, and `term()`:
 

@@ -54,6 +54,12 @@ export interface AttemptEvent {
   readonly tenantId: string;
   /** The source listener. */
   readonly listenerId: string;
+  /**
+   * The mxRaven message reference of the message this attempt belongs to. It
+   * joins attempts and acceptance events for the same message, including every
+   * recipient a single send fanned out to.
+   */
+  readonly messageRef?: string;
   /** The `task_id` of the accepted event for the message, when one was recorded. */
   readonly correlationId?: string;
   /** The attempt outcome. */

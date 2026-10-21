@@ -181,6 +181,12 @@ export interface InboundEmail {
   readonly tenant_id: string;
   /** The listener that accepted the message. */
   readonly listener_id: string;
+  /**
+   * The mxRaven message reference. For an outbound listener it is the value the
+   * submission reply reported as `message_ref=`, so an event can be joined to
+   * the send that produced it.
+   */
+  readonly message_ref?: string;
   /** The delivery attempt number, starting at 1. */
   readonly attempt: number;
   /** The Unix time, in seconds, when mxRaven accepted the message. */
@@ -214,6 +220,8 @@ export interface DeliveryStatus {
   readonly tenant_id: string;
   /** The source listener. */
   readonly listener_id: string;
+  /** The mxRaven message reference of the message this attempt belongs to. */
+  readonly message_ref?: string;
   /** The delivery outcome. */
   readonly status: StatusOutcome;
   /** The delivery attempt number, starting at 1. */
@@ -252,6 +260,8 @@ export interface StorageStatus {
   readonly tenant_id?: string;
   /** The source listener. */
   readonly listener_id?: string;
+  /** The mxRaven message reference of the message this attempt belongs to. */
+  readonly message_ref?: string;
   /** The storage outcome. */
   readonly status: StatusOutcome;
   /** The delivery attempt number, starting at 1. */

@@ -92,6 +92,7 @@ function decodeAttempt(source: JsonObject, subject: string): NotificationEvent {
     taskId: requiredString(source, "task_id", subject),
     tenantId: requiredString(source, "tenant_id", subject),
     listenerId: requiredString(source, "listener_id", subject),
+    messageRef: optionalString(source, "message_ref", subject),
     correlationId: optionalString(source, "correlation_id", subject),
     status: status as StatusOutcome,
     attempt: requiredNumber(source, "attempt", subject),

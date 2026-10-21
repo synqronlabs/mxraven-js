@@ -38,6 +38,7 @@ const smtpAttemptBody = `{
   "task_id": "task-1",
   "tenant_id": "tenant-1",
   "listener_id": "listener-1",
+  "message_ref": "message-ref-1",
   "correlation_id": "accepted-1",
   "status": "deferred",
   "attempt": 3,
@@ -60,6 +61,7 @@ const s3AttemptBody = `{
   "task_id": "task-1",
   "tenant_id": "tenant-1",
   "listener_id": "listener-1",
+  "message_ref": "message-ref-1",
   "correlation_id": "accepted-1",
   "status": "delivered",
   "attempt": 2,
@@ -78,6 +80,7 @@ const webhookAttemptBody = `{
   "task_id": "task-1",
   "tenant_id": "tenant-1",
   "listener_id": "listener-1",
+  "message_ref": "message-ref-1",
   "correlation_id": "accepted-1",
   "status": "invalid",
   "attempt": 1,
@@ -121,6 +124,7 @@ describe("decodeNotification", () => {
     expect(event.attempt.channel).toBe(channel);
     expect(event.attempt.status).toBe(status);
     expect(event.attempt.correlationId).toBe("accepted-1");
+    expect(event.attempt.messageRef).toBe("message-ref-1");
   });
 
   it("maps every SMTP attempt field to camelCase", () => {
@@ -134,6 +138,7 @@ describe("decodeNotification", () => {
       taskId: "task-1",
       tenantId: "tenant-1",
       listenerId: "listener-1",
+      messageRef: "message-ref-1",
       correlationId: "accepted-1",
       status: "deferred",
       attempt: 3,
