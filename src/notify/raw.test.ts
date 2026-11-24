@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import type { RawEmail } from "./payload.js";
+import type { RawEmail } from "./accepted.js";
 import { fetchRawEmail, type FetchLike } from "./raw.js";
 
 const rawMessage = "From: sender@example.net\r\nSubject: Hello\r\n\r\nbody\r\n";
@@ -23,11 +23,11 @@ function rawEmailPayload(
 ): RawEmail {
   return {
     url,
-    token_type: "Bearer",
-    access_token: "short-lived-token",
-    expires_at_utc: 4102444800,
-    size_bytes: size,
-    sha256_hex: digest,
+    tokenType: "Bearer",
+    accessToken: "short-lived-token",
+    expiresAtUtc: 4102444800,
+    sizeBytes: size,
+    sha256Hex: digest,
   };
 }
 
@@ -64,7 +64,7 @@ describe("fetchRawEmail", () => {
     };
 
     await fetchRawEmail(
-      { url: "https://raw.example.com/messages/task-1.eml", access_token: "short-lived-token" },
+      { url: "https://raw.example.com/messages/task-1.eml", accessToken: "short-lived-token" },
       { fetch: fetchImpl },
     );
     expect(authorization).toBe("Bearer short-lived-token");
@@ -103,15 +103,25 @@ describe("fetchRawEmail", () => {
     });
     const payload: RawEmail = {
       url: "https://raw.example.com/messages/task-1.eml",
-      access_token: "expired",
+      accessToken: "expired",
     };
     await expect(fetchRawEmail(payload, { fetch: fetchImpl })).rejects.toThrow(/401/);
   });
 
+  it("requires exactly 200, not any successful status", async () => {
+    const fetchImpl = respondWith(rawMessage, { status: 206, statusText: "Partial Content" });
+    const payload = rawEmailPayload(
+      "https://raw.example.com/messages/task-1.eml",
+      sha256Hex(rawMessage),
+      rawMessage.length,
+    );
+    await expect(fetchRawEmail(payload, { fetch: fetchImpl })).rejects.toThrow(/206/);
+  });
+
   it("requires a URL and a token", async () => {
-    await expect(fetchRawEmail({ url: "", access_token: "token" })).rejects.toThrow(/URL is empty/);
+    await expect(fetchRawEmail({ url: "", accessToken: "token" })).rejects.toThrow(/URL is empty/);
     await expect(
-      fetchRawEmail({ url: "https://example.com/messages/x.eml", access_token: "" }),
+      fetchRawEmail({ url: "https://example.com/messages/x.eml", accessToken: "" }),
     ).rejects.toThrow(/access token is empty/);
   });
 });

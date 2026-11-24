@@ -2,30 +2,57 @@
  * Decoded client notification payload shapes.
  */
 
-import type { InboundEmail, StatusOutcome } from "../webhook/payload.js";
+import type { AcceptedMessage } from "./accepted.js";
+import type { RoutingFault, RoutingHttpCall } from "./routing.js";
 
-/** Identifies which kind of notification an event carries. */
+/** Identifies which kind of notification an event carries. @public */
 export const notificationKind = {
-  /** A message the listener accepted and whose terminal action was resolved. */
+  /** A message the listener accepted and whose routing decision was resolved. */
   accepted: "accepted",
   /** One delivery attempt for an accepted message on an egress channel. */
   attempt: "attempt",
+  /** An MTA listener's routing script faulted and the message was deferred. */
+  fault: "fault",
 } as const;
 
-/** Identifies which kind of notification an event carries. */
+/** Identifies which kind of notification an event carries. @public */
 export type NotificationKind = (typeof notificationKind)[keyof typeof notificationKind];
 
-/** Identifies the egress worker that produced an attempt event. */
+/**
+ * The lifecycle state reported for a delivery attempt.
+ *
+ * Not every channel reports every value: an SMTP attempt can report
+ * `suppressed`, and an object-storage attempt reports only the first five.
+ *
+ * @public
+ */
+export const statusOutcome = {
+  /** A delivery attempt started. */
+  attempted: "attempted",
+  /** The destination accepted the message. */
+  delivered: "delivered",
+  /** The destination temporarily rejected the message. */
+  deferred: "deferred",
+  /** Delivery failed permanently. */
+  failed: "failed",
+  /** The delivery deadline passed before success. */
+  expired: "expired",
+  /** Delivery was skipped by a suppression rule. SMTP attempts only. */
+  suppressed: "suppressed",
+} as const;
+
+/** The lifecycle state reported for a delivery attempt. @public */
+export type StatusOutcome = (typeof statusOutcome)[keyof typeof statusOutcome];
+
+/** Identifies the egress worker that produced an attempt event. @public */
 export const attemptChannel = {
   /** An SMTP delivery attempt. */
   smtp: "smtp",
   /** An object-storage write attempt. */
   s3: "s3",
-  /** A webhook delivery attempt. */
-  webhook: "webhook",
 } as const;
 
-/** Identifies the egress worker that produced an attempt event. */
+/** Identifies the egress worker that produced an attempt event. @public */
 export type AttemptChannel = (typeof attemptChannel)[keyof typeof attemptChannel];
 
 /**
@@ -34,21 +61,19 @@ export type AttemptChannel = (typeof attemptChannel)[keyof typeof attemptChannel
  * `channel` names the worker that produced the event. The remaining fields
  * describe that channel's protocol and are absent when they do not apply.
  *
- * A rule that chains side-effect actions reports each action it triggers, so a
- * message can produce more than one attempt event. Every attempt carries a
- * `correlationId` that points at the `task_id` of the accepted event for the
- * message it stems from, which is how an attempt joins back to its acceptance.
- * A submission listener's attempts usually share the accepted event's
- * `taskId` as well.
+ * A routing script that stages several effects reports each one, so an inbound
+ * message whose script forwards and archives produces an attempt event for
+ * each. Every attempt carries a `correlationId` that points at the `taskId` of
+ * the accepted event for the message it stems from, which is how an attempt
+ * joins back to its acceptance. A submission listener's attempts usually share
+ * the accepted event's `taskId` as well.
  *
  * @public
  */
 export interface AttemptEvent {
-  /** The producer's event-type marker, when one is set. SMTP attempts omit it. */
-  readonly eventType?: string;
   /** The egress worker that produced the attempt. */
   readonly channel: AttemptChannel;
-  /** The delivery task. For a submission listener this equals the accepted event's `task_id`. */
+  /** The delivery task. For a submission listener this equals the accepted event's `taskId`. */
   readonly taskId: string;
   /** The owning tenant. */
   readonly tenantId: string;
@@ -60,7 +85,7 @@ export interface AttemptEvent {
    * recipient a single send fanned out to.
    */
   readonly messageRef?: string;
-  /** The `task_id` of the accepted event for the message, when one was recorded. */
+  /** The `taskId` of the accepted event for the message, when one was recorded. */
   readonly correlationId?: string;
   /** The attempt outcome. */
   readonly status: StatusOutcome;
@@ -99,38 +124,69 @@ export interface AttemptEvent {
   /** The storage provider error code, when one was returned. */
   readonly errorCode?: string;
 
-  /** The storage or webhook HTTP response status. */
+  /** The storage HTTP response status for an `s3` attempt. */
   readonly statusCode?: number;
   /** The failure description, truncated by the server. */
   readonly message?: string;
   /** The Unix time, in seconds, of the next attempt when the attempt will be retried. */
   readonly nextRetryAtUtc?: number;
-
-  /** The webhook retry-after hint, in milliseconds. */
-  readonly retryAfterMs?: number;
-  /** The webhook target host. */
-  readonly targetUrlHost?: string;
-  /** The webhook endpoint identifier. */
-  readonly webhookRef?: string;
-  /** The key ID used to sign the webhook attempt. */
-  readonly signingKeyKid?: string;
-  /** The raw-message token lifetime the webhook attempt used, in seconds. */
-  readonly rawTokenTtlSeconds?: number;
 }
 
-/** A message the listener accepted. */
+/**
+ * An MTA listener's routing-script fault.
+ *
+ * A fault now defers the transaction with a `451 4.3.0` reply, so no accepted
+ * event exists to carry it. This event is how the tenant learns why the message
+ * was not accepted.
+ *
+ * Fault events are sampled: each `smtp-mta` replica publishes at most one per
+ * script revision per minute. `suppressedFaults` counts the same revision's
+ * faults the replica did not report since its previous event, so one sample
+ * explains a broken revision without flooding the stream.
+ *
+ * @public
+ */
+export interface FaultEvent {
+  /** The owning tenant. */
+  readonly tenantId: string;
+  /** The MTA listener whose script faulted. */
+  readonly listenerId: string;
+  /** The mxRaven message reference of the deferred transaction. */
+  readonly messageRef: string;
+  /** The Unix time, in seconds, when the fault was reported. */
+  readonly occurredAtUtc: number;
+  /** The published script revision that faulted. */
+  readonly scriptRevisionId: string;
+  /** The revision number that faulted. */
+  readonly scriptRevision: number;
+  /** The envelope sender. It may be empty for a null reverse-path. */
+  readonly mailFrom: string;
+  /** The recipient context whose routing faulted. */
+  readonly recipient: string;
+  /** The reply the sender received, for example a `451 4.3.0` deferral. */
+  readonly smtpResponse: string;
+  /** The stable fault reason, message, and script line. */
+  readonly fault: RoutingFault;
+  /** The script's `mx.log` lines, in order. */
+  readonly log: readonly string[];
+  /** Every `mx.http` call the invocation made. At most two. */
+  readonly httpCalls?: readonly RoutingHttpCall[];
+  /**
+   * Same-revision faults the producer did not report since its previous fault
+   * event.
+   */
+  readonly suppressedFaults: number;
+}
+
+/** A message the listener accepted. @public */
 export interface AcceptedNotification {
   /** Always `accepted`. */
   readonly kind: typeof notificationKind.accepted;
-  /**
-   * The accepted-message payload. It is the same payload a
-   * `DELIVER_WEBHOOK` delivery carries; download the raw message with
-   * `fetchRawEmail` from `@mxraven/mail/webhook` when needed.
-   */
-  readonly accepted: InboundEmail;
+  /** The accepted-message payload and its routing decision. */
+  readonly accepted: AcceptedMessage;
 }
 
-/** One delivery attempt for an accepted message. */
+/** One delivery attempt for an accepted message. @public */
 export interface AttemptNotification {
   /** Always `attempt`. */
   readonly kind: typeof notificationKind.attempt;
@@ -138,12 +194,20 @@ export interface AttemptNotification {
   readonly attempt: AttemptEvent;
 }
 
+/** A sampled routing-script fault for an MTA listener. @public */
+export interface FaultNotification {
+  /** Always `fault`. */
+  readonly kind: typeof notificationKind.fault;
+  /** The fault details. */
+  readonly fault: FaultEvent;
+}
+
 /**
  * A decoded client notification.
  *
- * The `kind` field selects the payload shape. Both kinds arrive on one
+ * The `kind` field selects the payload shape. Every kind arrives on one
  * listener's durable consumer.
  *
  * @public
  */
-export type NotificationEvent = AcceptedNotification | AttemptNotification;
+export type NotificationEvent = AcceptedNotification | AttemptNotification | FaultNotification;

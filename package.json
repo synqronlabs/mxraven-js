@@ -1,17 +1,17 @@
 {
   "name": "@mxraven/mail",
   "version": "0.6.0",
-  "description": "TypeScript SDK for the mxRaven mail runtime: SMTP submission, client notifications, webhook verification, and recipient feedback.",
+  "description": "TypeScript SDK for the mxRaven mail runtime: SMTP submission, client notifications, signed endpoint-call verification, inbound message parsing, and recipient feedback.",
   "keywords": [
     "email",
+    "endpoint",
     "feedback",
     "mail",
     "mxraven",
     "nats",
     "notifications",
     "sdk",
-    "smtp",
-    "webhook"
+    "smtp"
   ],
   "homepage": "https://github.com/synqronlabs/mxraven-js",
   "bugs": {

@@ -1,27 +1,34 @@
 /**
- * Bounded body reads shared by the webhook verifier and raw-email download.
+ * Bounded body reads shared by request verification and raw-email download.
  *
  * @internal
  */
 
-import { PayloadTooLargeError } from "./errors.js";
+/** Options for {@link readBoundedBody}. */
+export interface ReadBoundedBodyOptions {
+  /** The stream to read, or `null` for an empty body. */
+  readonly stream: ReadableStream<Uint8Array> | null;
+  /** The maximum number of bytes to read. */
+  readonly limit: number;
+  /** Cancels the read. */
+  readonly signal: AbortSignal | undefined;
+  /** A label used in error messages. */
+  readonly label: string;
+  /** Builds the error thrown when the body exceeds the limit. */
+  readonly tooLarge: (message: string) => Error;
+}
 
 /**
  * Reads a web stream, rejecting when it exceeds a byte limit.
  *
- * @param stream - The stream to read, or `null` for an empty body.
- * @param limit - The maximum number of bytes to read.
- * @param signal - Cancels the read.
- * @param label - A label used in error messages.
+ * @param options - The stream, limit, cancellation signal, and error factory.
  * @returns The collected bytes.
  * @throws `Error` When the stream exceeds the limit or the signal aborts.
+ *
+ * @internal
  */
-export async function readBoundedBody(
-  stream: ReadableStream<Uint8Array> | null,
-  limit: number,
-  signal: AbortSignal | undefined,
-  label: string,
-): Promise<Uint8Array> {
+export async function readBoundedBody(options: ReadBoundedBodyOptions): Promise<Uint8Array> {
+  const { stream, limit, signal, label, tooLarge } = options;
   if (stream === null) {
     return new Uint8Array();
   }
@@ -52,7 +59,7 @@ export async function readBoundedBody(
         total += value.byteLength;
         if (total > limit) {
           void reader.cancel().catch(() => undefined);
-          throw new PayloadTooLargeError(`webhook: ${label} exceeds ${limit} bytes`);
+          throw tooLarge(`${label} exceeds ${limit} bytes`);
         }
         chunks.push(value);
       }
@@ -80,5 +87,5 @@ function abortError(reason: unknown): Error {
   if (reason instanceof Error) {
     return reason;
   }
-  return new Error("webhook: operation aborted", { cause: reason });
+  return new Error("operation aborted", { cause: reason });
 }

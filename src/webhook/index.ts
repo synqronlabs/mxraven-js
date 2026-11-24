@@ -1,44 +1,40 @@
 /**
- * Webhook verification, dispatch, and decoding for mxRaven deliveries.
+ * Endpoint request verification for routing-script `mx.http` calls.
  *
- * mxRaven signs every webhook delivery with HMAC-SHA256 over a canonical
- * request string and sends the signature in `X-MxRaven-*` headers. The
- * recommended entry point is {@link WebhookHandler}, which verifies the
- * request, decodes the JSON payload, and dispatches it to typed listeners:
+ * Routing scripts call tenant-registered endpoints with `mx.http`, and mxRaven
+ * signs each call with the endpoint's key. The signature scheme is the one
+ * mxRaven used for webhook deliveries, so this entry point is still published
+ * as `@mxraven/mail/webhook`. The script decides the request body, so
+ * verification stops at the signature: parse the body your endpoint defines.
  *
  * ```ts
- * const webhook = new WebhookHandler({ secret });
+ * import { Verifier } from "@mxraven/mail/webhook";
  *
- * webhook.on(eventType.inboundEmail, async (email) => {
- *   await store.save(email.task_id, email);
- * });
+ * const verifier = new Verifier({ secret });
  *
- * export default { fetch: (request: Request) => webhook.handle(request) };
+ * export default {
+ *   async fetch(request: Request) {
+ *     await verifier.verify(request);
+ *     const payload = await request.json();
+ *     // ...
+ *     return new Response(null, { status: 204 });
+ *   },
+ * };
  * ```
  *
- * Listeners run in registration order and the request is only acknowledged
- * after they resolve. `handle` never throws for protocol failures; the
- * response status is `204` accepted, `400` malformed, `401` bad signature,
- * `413` body too large, or `500` when a listener throws, which makes mxRaven
- * retry. For Node frameworks that do not expose a Fetch `Request`, pass
- * `method`, `url`, `headers`, and `body` to `handle` instead.
+ * The signing secret is shown only once, when the endpoint is created or its
+ * secret is rotated. The secret is used as literal key bytes; do not
+ * base64-decode it. Map `WebhookError.status` onto the response status: `400`
+ * malformed, `401` bad signature, and `413` body too large.
  *
- * An inbound-email event carries the message metadata, the decoded header
- * summary, every header, and a `raw_email` **reference**. The body and
- * attachments are not inlined; download and parse them with
- * `fetchAndParseRawEmail` from `@mxraven/mail/mime` when needed.
- *
- * For full control, use the low-level {@link Verifier} and {@link decode}:
- * verify a request, then switch on `event.type`.
- *
- * The signing secret is shown only once, when the webhook endpoint is created
- * or its secret is rotated. The secret is used as literal key bytes; do not
- * base64-decode it.
+ * An endpoint configured with a stored credential is called with that credential
+ * header instead of mxRaven's signature. Those calls carry no `X-MxRaven-*`
+ * headers, so {@link Verifier} does not apply; authenticate the credential the
+ * endpoint expects.
  *
  * @packageDocumentation
  */
 
-export { decode } from "./decode.js";
 export {
   InvalidSignatureError,
   PayloadTooLargeError,
@@ -46,32 +42,5 @@ export {
   WebhookRequestError,
 } from "./errors.js";
 export type { WebhookStatus } from "./errors.js";
-export { WebhookHandler } from "./handler.js";
-export type {
-  DeliveryStatusHandler,
-  InboundEmailHandler,
-  StorageStatusHandler,
-  WebhookEventHandlers,
-  WebhookHandlerOptions,
-  WebhookRequestParts,
-} from "./handler.js";
-export { eventType, statusOutcome, terminalAction } from "./payload.js";
-export type {
-  DeliveryStatus,
-  Event,
-  EventType,
-  HeaderField,
-  InboundEmail,
-  MessageSummary,
-  RawEmail,
-  RoutingDecision,
-  StatusOutcome,
-  StorageStatus,
-  TerminalAction,
-  Verdicts,
-  WebhookEnvelope,
-} from "./payload.js";
-export { fetchRawEmail } from "./raw.js";
-export type { FetchLike, FetchRawEmailOptions } from "./raw.js";
 export { Verifier, webhookHeaders } from "./verifier.js";
-export type { VerifierOptions, VerifyOptions } from "./verifier.js";
+export type { VerifierOptions, VerifyOptions, WebhookRequestParts } from "./verifier.js";

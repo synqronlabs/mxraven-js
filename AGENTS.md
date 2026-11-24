@@ -6,7 +6,11 @@
 surfaces:
 
 - **SMTP submission** — the default entry point (`@mxraven/mail`).
-- **Webhook verification and decoding** — `@mxraven/mail/webhook`.
+- **Signed endpoint-call verification** — `@mxraven/mail/webhook`, for the
+  `mx.http` calls a listener's routing script makes.
+- **Client notifications** — `@mxraven/mail/notify`, the accepted-message,
+  delivery-attempt, and sampled routing-script fault stream over NATS JetStream.
+- **Inbound message parsing** — `@mxraven/mail/mime`.
 - **Recipient feedback and RFC 8058 one-click unsubscribe** — `@mxraven/mail/feedback`.
 
 It is the TypeScript counterpart of the Go SDK at
@@ -111,7 +115,7 @@ necessary.
   tree-shakeable and map cleanly to the wire format:
 
   ```ts
-  /** Lifecycle state reported by a delivery-status webhook. */
+  /** Lifecycle state reported for a delivery attempt. */
   export const statusOutcome = {
     /** A delivery attempt started. */
     attempted: "attempted",
@@ -119,7 +123,7 @@ necessary.
     delivered: "delivered",
   } as const;
 
-  /** Lifecycle state reported by a delivery-status webhook. */
+  /** Lifecycle state reported for a delivery attempt. */
   export type StatusOutcome = (typeof statusOutcome)[keyof typeof statusOutcome];
   ```
 
@@ -274,8 +278,8 @@ Example:
 - Keep tests independent and order-insensitive. Use `beforeEach`/`afterEach` for
   setup and teardown.
 - **Never depend on the real network.** Use `vi.stubGlobal`, dependency
-  injection, a local in-process fake SMTP/HTTP server, or fixtures. The webhook
-  and feedback clients talk to `fetch`; stub it.
+  injection, a local in-process fake SMTP/HTTP server, or fixtures. The endpoint
+  verifier and feedback clients talk to `fetch`; stub it.
 - Use `vi.useFakeTimers()` for time-dependent behavior rather than real delays.
 - Do not assert on complete error message strings unless the human-readable
   output is explicitly contractual.
@@ -350,12 +354,12 @@ when they are already part of the established toolchain.
 
 ## Security
 
-- Never log or embed secrets: the SMTP submission secret, the webhook signing
+- Never log or embed secrets: the SMTP submission secret, the endpoint signing
   secret, and raw-email access tokens are all sensitive.
 - Compare signatures and tokens with a timing-safe comparison
   (`node:crypto` `timingSafeEqual`), not `===`.
-- Treat all external input (HTTP responses, webhook bodies, SMTP replies) as
-  untrusted and validate or bound it before use.
+- Treat all external input (HTTP responses, signed endpoint bodies, SMTP
+  replies) as untrusted and validate or bound it before use.
 - Bound network reads with explicit size limits and timeouts, and expose an
   `AbortSignal` so callers can cancel.
 

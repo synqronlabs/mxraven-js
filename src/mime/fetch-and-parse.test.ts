@@ -2,19 +2,19 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import type { RawEmail } from "../webhook/payload.js";
-import type { FetchLike } from "../webhook/raw.js";
+import type { RawEmail } from "../notify/accepted.js";
+import type { FetchLike } from "../notify/raw.js";
 import { fetchAndParseRawEmail } from "./index.js";
 
 const MESSAGE = "Subject: Inbound\r\nContent-Type: text/plain\r\n\r\nhello";
 
-/** Builds a valid `raw_email` payload for the given bytes. */
+/** Builds a valid `rawEmail` payload for the given bytes. */
 function rawEmailFor(bytes: Uint8Array, overrides: Partial<RawEmail> = {}): RawEmail {
   return {
     url: "https://raw.example.com/message.eml",
-    access_token: "token",
-    size_bytes: bytes.byteLength,
-    sha256_hex: createHash("sha256").update(bytes).digest("hex"),
+    accessToken: "token",
+    sizeBytes: bytes.byteLength,
+    sha256Hex: createHash("sha256").update(bytes).digest("hex"),
     ...overrides,
   };
 }
@@ -41,7 +41,7 @@ describe("fetchAndParseRawEmail", () => {
     const fetcher: FetchLike = async () => new Response(bytes, { status: 200 });
 
     await expect(
-      fetchAndParseRawEmail(rawEmailFor(bytes, { sha256_hex: "0".repeat(64) }), {
+      fetchAndParseRawEmail(rawEmailFor(bytes, { sha256Hex: "0".repeat(64) }), {
         fetch: fetcher,
       }),
     ).rejects.toThrow(/SHA-256/);

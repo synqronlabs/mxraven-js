@@ -1,16 +1,16 @@
 /**
- * Webhook errors.
+ * Endpoint request verification errors.
  *
- * Every error thrown while handling a webhook request is a {@link WebhookError}
+ * Every error thrown while verifying a signed request is a {@link WebhookError}
  * carrying the HTTP status an adapter should respond with, so framework
  * integration never has to branch on error messages.
  */
 
-/** The HTTP status a webhook handler responds with. */
-export type WebhookStatus = 200 | 204 | 400 | 401 | 413 | 500;
+/** The HTTP status a failed verification responds with. @public */
+export type WebhookStatus = 400 | 401 | 413;
 
 /**
- * A webhook request failure with an associated HTTP status.
+ * A request verification failure with an associated HTTP status.
  *
  * @public
  */
@@ -31,7 +31,7 @@ export class WebhookError extends Error {
 }
 
 /**
- * A webhook signature did not match the request.
+ * A request signature did not match.
  *
  * @public
  */
@@ -46,8 +46,8 @@ export class InvalidSignatureError extends WebhookError {
 }
 
 /**
- * A webhook request was malformed, for example missing signature headers, a
- * stale timestamp, or a payload that is not valid JSON.
+ * A signed request was malformed, for example missing signature headers, a
+ * stale timestamp, or an invalid request URL.
  *
  * @public
  */
@@ -63,7 +63,7 @@ export class WebhookRequestError extends WebhookError {
 }
 
 /**
- * A webhook request body exceeded the configured limit.
+ * A request body exceeded the configured limit.
  *
  * @public
  */

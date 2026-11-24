@@ -7,7 +7,7 @@
 [![Node.js](https://img.shields.io/node/v/@mxraven/mail?label=NODE&color=fe7d37&style=for-the-badge)](https://nodejs.org)
 
 A TypeScript SDK for the mxRaven mail-facing runtime surfaces: SMTP submission,
-webhook verification and dispatch, inbound message parsing, client
+signed endpoint-call verification, inbound message parsing, client
 notifications, and recipient feedback.
 
 > **Status:** early development. The public API is not yet stable.
@@ -233,44 +233,54 @@ await client.send(
 );
 ```
 
-## Webhooks
+## Signed endpoint calls
 
-Verification, dispatch, and decoding live in a separate entry point that uses
-the webhook signing secret, not the submission API key.
+Routing scripts call tenant-registered endpoints with `mx.http`. mxRaven signs
+each call with the endpoint's signing secret — not the submission API key —
+using the same `X-MxRaven-*` scheme it used for webhook deliveries. The script
+decides the request body, so `@mxraven/mail/webhook` stops at the signature:
+parse the body your endpoint defines.
 
-### Handling events
-
-`WebhookHandler` verifies the signature, decodes the JSON payload, and
-dispatches it to typed listeners registered with `on`:
+### Verifying a call
 
 ```ts
-import { WebhookHandler, eventType } from "@mxraven/mail/webhook";
+import { Verifier, WebhookError, webhookHeaders } from "@mxraven/mail/webhook";
 
-const webhook = new WebhookHandler({ secret: process.env.MXRAVEN_WEBHOOK_SECRET! });
+const secret = process.env.MXRAVEN_ENDPOINT_SECRET;
+if (secret === undefined || secret === "") {
+  throw new Error("MXRAVEN_ENDPOINT_SECRET is required");
+}
 
-webhook.on(eventType.inboundEmail, async (email) => {
-  console.log(email.task_id, email.message.subject);
-});
+const verifier = new Verifier({ secret });
 
-webhook.on(eventType.deliveryStatus, async (status) => {
-  console.log(status.status, status.task_id);
-});
+export default {
+  async fetch(request: Request) {
+    try {
+      await verifier.verify(request);
+    } catch (error) {
+      // 400 malformed, 401 bad signature, 413 body too large.
+      const status = error instanceof WebhookError ? error.status : 500;
+      return new Response(null, { status });
+    }
 
-// Fetch-native runtimes (Workers, Deno, Bun, Next.js, Hono)
-export default { fetch: (request: Request) => webhook.handle(request) };
+    console.log(
+      "call from listener",
+      request.headers.get(webhookHeaders.listener),
+      "revision",
+      request.headers.get(webhookHeaders.revision),
+    );
+    const payload = await request.json();
+    return Response.json({ verdict: "allow" });
+  },
+};
 ```
 
-Listeners run sequentially in registration order, and the delivery is only
-acknowledged after they resolve. `handle` never throws for protocol failures;
-the response status is `204` accepted, `400` malformed, `401` bad signature,
-`413` body too large, or `500` when a listener throws — which makes mxRaven
-retry the delivery.
-
-Frameworks that do not expose a Fetch `Request` pass its fields instead; this
-is the only mapping an adapter needs:
+`Verifier.verify` reads the body from a request clone, so the original request
+remains readable. Frameworks that do not expose a Fetch `Request` pass its
+fields instead; this is the only mapping an adapter needs:
 
 ```ts
-const response = await webhook.handle({
+await verifier.verify({
   method: request.method, // the HTTP method
   url: publicUrl, // the absolute, public URL the sender called
   headers: request.headers, // a header map or Headers
@@ -278,50 +288,91 @@ const response = await webhook.handle({
 });
 ```
 
-The response carries only a status; map it to the framework's response API.
 Because the signature covers the exact raw body and the public URL, never let a
 body parser consume the bytes first, and always reconstruct the URL the sender
 used. See [Framework support](#framework-support) for concrete recipes.
 
-An inbound-email event contains the message metadata, the decoded header
-summary, every header, and a `raw_email` **reference** with a short-lived
-download URL. The body and attachments are not inlined, so download and parse
-the message only when you need it:
-
-```ts
-import { fetchAndParseRawEmail } from "@mxraven/mail/mime";
-
-webhook.on(eventType.inboundEmail, async (email) => {
-  const parsed = await fetchAndParseRawEmail(email.raw_email);
-  console.log(parsed.subject, parsed.attachments.length);
-});
-```
-
-For manual control, use the low-level verifier directly.
-
-### Low-level verification
-
-```ts
-import { Verifier, eventType } from "@mxraven/mail/webhook";
-
-const verifier = new Verifier({ secret: process.env.MXRAVEN_WEBHOOK_SECRET! });
-const event = await verifier.verifyAndDecode(request);
-
-if (event.type === eventType.inboundEmail) {
-  // event.inboundEmail.raw_email references the full message.
-}
-```
-
 The signing secret is used as literal key bytes; do not base64-decode it. Pass
-per-key secrets to `Verifier` with `keys` for rotation. The raw-email
-`access_token` is a secret; do not log it.
+per-key secrets to `Verifier` with `keys` for rotation. The
+`X-MxRaven-Listener` and `X-MxRaven-Revision` headers identify the script call
+but are not part of the signed canonical request, so do not use them for
+authorization.
 
-### Inbound parsing
+An endpoint configured with a stored credential is called with that credential
+header instead of mxRaven's signature. Those calls carry no `X-MxRaven-*`
+headers, so `Verifier` does not apply; authenticate the credential the endpoint
+expects.
+
+Webhook deliveries (`DELIVER_WEBHOOK`, `NOTIFY_WEBHOOK`, and delivery-status
+callbacks) no longer exist. Accepted messages, delivery attempts, and sampled
+routing-script faults arrive on the
+[notification stream](#client-notifications); a tenant that wants a custom push
+calls its own endpoint from the routing script.
+
+### Framework support
+
+Fetch-native runtimes pass the request directly to `Verifier.verify`: Cloudflare
+Workers, Deno, Bun, Next.js (App Router), Remix, SvelteKit, Astro, Hono
+(`c.req.raw`), and `@whatwg-node/server`.
+
+Frameworks with their own request objects — `IncomingMessage` in Express,
+`FastifyRequest` in Fastify, `ctx` in Koa — map method, public URL, headers, and
+raw body onto the verifier. Express:
+
+```ts
+import { WebhookError, Verifier } from "@mxraven/mail/webhook";
+import express from "express";
+
+const verifier = new Verifier({ secret: process.env.MXRAVEN_ENDPOINT_SECRET! });
+
+const app = express();
+app.set("trust proxy", true); // use X-Forwarded-Proto/Host behind a proxy
+
+app.post(
+  "/mxraven/risk-check",
+  express.raw({ type: "*/*" }), // keeps the exact bytes on req.body
+  async (req, res) => {
+    // express.raw() must be mounted before any express.json() parser.
+    try {
+      await verifier.verify({
+        method: req.method,
+        url: `${req.protocol}://${req.get("host")}${req.originalUrl}`,
+        headers: req.headers,
+        body: req.body,
+      });
+    } catch (error) {
+      const status = error instanceof WebhookError ? error.status : 500;
+      res.sendStatus(status);
+      return;
+    }
+
+    const payload = JSON.parse(req.body.toString("utf8"));
+    res.status(200).json({ verdict: "allow", from: payload.from });
+  },
+);
+```
+
+In Fastify, capture the raw buffer with an `addContentTypeParser` hook, then
+pass `request.method`, the public URL, `request.headers`, and the buffer to
+`verify`.
+
+The runtime surfaces are published as separate entry points so the root import
+stays free of endpoint, notification, and feedback code:
+
+- `@mxraven/mail/webhook` — HMAC-SHA256 verification of signed `mx.http` calls.
+- `@mxraven/mail/mime` — inbound message parsing into headers, addresses,
+  bodies, and attachments.
+- `@mxraven/mail/notify` — client notification events over NATS JetStream and
+  raw-message download.
+- `@mxraven/mail/feedback` — tenant spam/ham training and RFC 8058 one-click
+  unsubscribes.
+
+## Inbound parsing
 
 `@mxraven/mail/mime` decodes raw RFC 5322 bytes into headers, addresses, text
-and HTML bodies, and attachments. `fetchAndParseRawEmail` downloads a payload's
-`raw_email` reference and parses it in one call (shown above); `parseEmail`
-parses bytes you already have:
+and HTML bodies, and attachments. `fetchAndParseRawEmail` downloads an accepted
+event's `rawEmail` reference and parses it in one call; `parseEmail` parses
+bytes you already have:
 
 ```ts
 import { parseEmail } from "@mxraven/mail/mime";
@@ -336,62 +387,14 @@ decodes RFC 2047 encoded words and reassembles RFC 2231 parameters, and falls
 back to UTF-8 and then Latin-1 for unknown charsets. `message/rfc822` parts are
 returned as attachments rather than parsed recursively.
 
-### Framework support
+## Client notifications
 
-Fetch-native runtimes accept the request directly — `webhook.handle(request)`
-(or `verifier.verifyAndDecode(request)`): Cloudflare Workers, Deno, Bun,
-Next.js (App Router), Remix, SvelteKit, Astro, Hono (`c.req.raw`), and
-`@whatwg-node/server`.
-
-Frameworks with their own request objects — `IncomingMessage` in Express,
-`FastifyRequest` in Fastify, `ctx` in Koa — map method, public URL, headers, and
-raw body onto `handle`. Express:
-
-```ts
-import express from "express";
-
-const app = express();
-app.set("trust proxy", true); // use X-Forwarded-Proto/Host behind a proxy
-
-app.post(
-  "/mxraven/webhook",
-  express.raw({ type: "*/*" }), // keeps the exact bytes on req.body
-  async (req, res) => {
-    // express.raw() must be mounted before any express.json() parser.
-    const response = await webhook.handle({
-      method: req.method,
-      url: `${req.protocol}://${req.get("host")}${req.originalUrl}`,
-      headers: req.headers,
-      body: req.body,
-    });
-    res.sendStatus(response.status);
-  },
-);
-```
-
-In Fastify, capture the raw buffer with an `addContentTypeParser` hook, then
-pass `request.method`, the public URL, `request.headers`, and the buffer to
-`handle`. With the low-level `Verifier`, construct a `Request` from the same
-fields first; `decode` operates on bytes alone, so it can be used without any
-request object.
-
-The runtime surfaces are published as separate entry points so the root import
-stays free of webhook, notification, and feedback code:
-
-- `@mxraven/mail/webhook` — HMAC-SHA256 verification, typed event dispatch,
-  payload decoding, and raw message download.
-- `@mxraven/mail/mime` — inbound message parsing into headers, addresses,
-  bodies, and attachments.
-- `@mxraven/mail/notify` — client notification events over NATS JetStream.
-- `@mxraven/mail/feedback` — tenant spam/ham training and RFC 8058 one-click
-  unsubscribes.
-
-### Client notifications
-
-Enable notifications for a listener with the administrative API, then consume
-that listener's accepted-message and delivery-attempt events over NATS. The
-client authenticates with the same API key used for SMTP submission and manages
-the WebSocket transport, acknowledgement, and redelivery:
+The notification stream is mxRaven's only push channel for mail events. Enable
+notifications for a listener with the administrative API, then consume that
+listener's accepted-message, delivery-attempt, and routing-script fault events
+over NATS. The client authenticates with the same API key used for SMTP
+submission and manages the WebSocket transport, acknowledgement, and
+redelivery:
 
 ```ts
 import { NotificationClient } from "@mxraven/mail/notify";
@@ -410,9 +413,11 @@ const client = await NotificationClient.connect({
 
 await client.consume((event) => {
   if (event.kind === "accepted") {
-    console.log("accepted", event.accepted.task_id);
-  } else {
+    console.log("accepted", event.accepted.taskId, event.accepted.routingDecision.terminalAction);
+  } else if (event.kind === "attempt") {
     console.log("attempt", event.attempt.taskId, event.attempt.channel, event.attempt.status);
+  } else {
+    console.warn("script fault", event.fault.fault.reason, event.fault.suppressedFaults);
   }
 });
 ```
@@ -423,16 +428,47 @@ Return `stopConsuming` to acknowledge the current event and stop. Cancellation
 with an `AbortSignal` and `client.close()` are normal stops and resolve the
 promise.
 
-An accepted event is the same payload a `DELIVER_WEBHOOK` delivery carries, so
-`event.accepted.raw_email` downloads with `fetchRawEmail` from
-`@mxraven/mail/webhook`. An attempt event is a camelCase `AttemptEvent` whose
-`channel` is `smtp`, `s3`, or `webhook`; `correlationId` joins it back to the
-accepted event's `task_id`.
+An accepted event carries the parsed message, the SMTP envelope, the routing
+decision, and — for an MTA listener — a `rawEmail` reference. Download and parse
+the message only when you need it:
 
-`messageRef` (`message_ref` on the accepted payload) joins an event to the send
-that produced it: `send()` reports the same value as `result.messageRef`. It is
-the only identifier in an event that the caller already holds, and it groups the
-attempts of a fan-out that otherwise have distinct task IDs.
+```ts
+import { fetchRawEmail } from "@mxraven/mail/notify";
+import { parseEmail } from "@mxraven/mail/mime";
+
+if (event.kind === "accepted" && event.accepted.rawEmail.accessToken !== "") {
+  const email = parseEmail(await fetchRawEmail(event.accepted.rawEmail));
+  console.log(email.subject, email.attachments.length);
+}
+```
+
+A submission listener's `rawEmail` is empty because raw-message access is
+granted to MTA listeners only. `rawEmail.accessToken` is a secret; do not log it.
+
+`routingDecision` records what the listener's routing script did:
+`terminalAction`, `usedListenerDefault`, the published `scriptRevisionId` and
+`scriptRevision`, the executed non-terminal `intents`, the `skipped` intents,
+the script's `log` lines, any `fault`, and every `mx.http` call in `httpCalls`.
+A repeated identical call within one MTA transaction carries
+`httpCalls[].cached`. That is enough to debug a listener from the stream alone.
+
+A routing-script fault on an MTA listener defers the transaction with a
+`451 4.3.0`, so it produces a `fault` event instead of an accepted event. The
+`FaultEvent` carries the deferred `messageRef`, envelope `mailFrom`, faulted
+`recipient`, the `smtpResponse` the sender received, the script revision, the
+`fault` reason and message, the script's `log` lines, and its `httpCalls`.
+Fault events are sampled: each `smtp-mta` replica publishes at most one per
+script revision per minute, and `suppressedFaults` counts the same revision's
+faults it did not report since its previous event.
+
+An attempt event is an `AttemptEvent` whose `channel` is `smtp` or `s3`.
+`correlationId` joins a side-effect attempt back to the accepted event's
+`taskId`, and `messageRef` groups the attempts of a fan-out.
+
+`messageRef` also joins an event to the send that produced it: `send()` reports
+the same value as `result.messageRef`. It is the only identifier in an event
+that the caller already holds, and it groups the attempts of a fan-out that
+otherwise have distinct task IDs.
 
 For manual acknowledgement, iterate events with `client.events()`. Each
 delivery exposes `ack()`, `nak({ delay })`, and `term()`:
@@ -454,7 +490,7 @@ that share one API key share one durable consumer: events are distributed
 between them, not duplicated to each. Use the `tls` option to trust a private
 certificate authority or present a client certificate.
 
-### Feedback
+## Feedback
 
 Teach the spam filter with the exact raw message bytes mxRaven processed, or
 perform a one-click unsubscribe. Learning uses the same submission API key as
@@ -489,10 +525,8 @@ replace, then shows one workflow:
 | -------------------------- | -------------------------------------------------------------- |
 | `send-with-attachments.ts` | SMTP submission with a regular and an inline `cid:` attachment |
 | `send-with-react.tsx`      | Server-side React Email rendering through `@mxraven/react`     |
-| `webhook-node.ts`          | A dependency-free Node HTTP adapter                            |
-| `webhook-express.ts`       | Express 5 with `express.raw()` and `trust proxy`               |
-| `webhook-fastify.ts`       | Fastify with a buffer content-type parser                      |
-| `webhook-hono.ts`          | Hono on Workers/Deno/Bun, passing `Request` straight through   |
+| `endpoint-express.ts`      | Express 5 with `express.raw()` and `trust proxy`               |
+| `endpoint-hono.ts`         | Hono on Workers/Deno/Bun, passing `Request` straight through   |
 | `parse-inbound.ts`         | Decoding an `.eml` file into headers, bodies, and attachments  |
 | `notifications.ts`         | Consuming client notification events from a NATS JetStream     |
 | `feedback.ts`              | Spam/ham training and one-click unsubscribe                    |

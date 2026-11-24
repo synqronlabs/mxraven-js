@@ -1,5 +1,5 @@
 // @ts-nocheck -- reference example, not covered by the SDK typecheck.
-import { NotificationClient, stopConsuming } from "@mxraven/mail/notify";
+import { NotificationClient, fetchRawEmail, stopConsuming } from "@mxraven/mail/notify";
 
 // Replace these with the listener API key and listener ID from the dashboard.
 const MXRAVEN_NATS_URL = "wss://notifications.mxraven.com";
@@ -22,12 +22,34 @@ process.once("SIGTERM", () => controller.abort());
 await client.consume(
   async (event) => {
     if (event.kind === "accepted") {
-      console.log("accepted", event.accepted.task_id, event.accepted.message.subject);
-      if (event.accepted.raw_email.access_token !== "") {
-        // MTA listeners can download the message with fetchRawEmail from
-        // @mxraven/mail/webhook.
-        console.log("raw message:", event.accepted.raw_email.url);
+      const { accepted } = event;
+      console.log(
+        "accepted",
+        accepted.taskId,
+        accepted.message.subject,
+        accepted.routingDecision.terminalAction,
+      );
+      for (const line of accepted.routingDecision.log) {
+        console.log("script:", line);
       }
+      if (accepted.rawEmail.accessToken !== "") {
+        // MTA listeners can download the exact spooled message.
+        const bytes = await fetchRawEmail(accepted.rawEmail);
+        console.log("raw message bytes:", bytes.byteLength);
+      }
+      return;
+    }
+
+    if (event.kind === "fault") {
+      // An MTA script fault defers the message with a 451, so the fault arrives
+      // here rather than on an accepted event. Fault events are sampled.
+      console.warn(
+        "script fault",
+        event.fault.fault.reason,
+        event.fault.fault.message,
+        "suppressed:",
+        event.fault.suppressedFaults,
+      );
       return;
     }
 

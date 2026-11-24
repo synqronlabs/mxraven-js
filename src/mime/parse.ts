@@ -139,7 +139,7 @@ interface WalkState {
  *
  * @example
  * ```ts
- * const email = parseEmail(await fetchRawEmail(event.inboundEmail.raw_email));
+ * const email = parseEmail(await fetchRawEmail(event.accepted.rawEmail));
  * console.log(email.subject, email.attachments.length);
  * ```
  *

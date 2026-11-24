@@ -16,7 +16,6 @@ const listener = "listener-1";
 const baseUrl = "wss://nats.example";
 
 const acceptedBody = JSON.stringify({
-  event_type: "inbound_email",
   task_id: "task-1",
   tenant_id: "tenant-1",
   listener_id: listener,
@@ -24,8 +23,12 @@ const acceptedBody = JSON.stringify({
   accepted_at_utc: 1700000000,
   occurred_at_utc: 1700000001,
   routing_decision: {
-    terminal_action: "TERMINAL_ACTION_TYPE_DELIVER_WEBHOOK",
+    terminal_action: "TERMINAL_ACTION_TYPE_DELIVER",
     used_listener_default: false,
+    script_revision_id: "rev-1",
+    script_revision: 1,
+    intents: [],
+    log: [],
   },
   envelope: { mail_from: "sender@example.com", rcpt_to: ["rcpt@example.com"] },
   message: { subject: "hi" },
@@ -55,7 +58,22 @@ const smtpAttemptBody = JSON.stringify({
   remote_response: "try later",
 });
 
-function event(kind: "accepted" | "attempt", body: string): FakeNatsEvent {
+const faultBody = JSON.stringify({
+  tenant_id: "tenant-1",
+  listener_id: listener,
+  message_ref: "message-ref-1",
+  occurred_at_utc: 1700000001,
+  script_revision_id: "rev-3",
+  script_revision: 3,
+  mail_from: "sender@example.com",
+  recipient: "rcpt@example.com",
+  smtp_response: "451 4.3.0 try again",
+  fault: { reason: "runtime_error", message: "boom", line: 4 },
+  log: ["start"],
+  suppressed_faults: 7,
+});
+
+function event(kind: "accepted" | "attempt" | "fault", body: string): FakeNatsEvent {
   return { subject: `tenant.tenant-1.listener.${listener}.events.${kind}`, body };
 }
 
@@ -155,6 +173,39 @@ describe("NotificationClient.consume", () => {
     controller.abort();
     await consuming;
     expect(seen).toEqual([notificationKind.accepted]);
+  });
+
+  it("decodes and acknowledges a routing fault event", async () => {
+    const server = await startServer();
+    server.enqueue(event("fault", faultBody));
+    const client = await connect(server);
+    const controller = new AbortController();
+    const seen: string[] = [];
+    let faultReason: string | undefined;
+    let suppressed: number | undefined;
+
+    const consuming = client.consume(
+      (notification) => {
+        seen.push(notification.kind);
+        if (notification.kind === notificationKind.fault) {
+          faultReason = notification.fault.fault.reason;
+          suppressed = notification.fault.suppressedFaults;
+        }
+      },
+      { signal: controller.signal },
+    );
+
+    await vi.waitFor(
+      () => {
+        expect(server.acks.map((ack) => ack.payload)).toContain("+ACK");
+      },
+      { timeout: 5_000 },
+    );
+    controller.abort();
+    await consuming;
+    expect(seen).toEqual([notificationKind.fault]);
+    expect(faultReason).toBe("runtime_error");
+    expect(suppressed).toBe(7);
   });
 
   it("redelivers a failed handler with exponential backoff", async () => {

@@ -49,9 +49,11 @@ const RETRY_MAX = 30_000;
  *
  * await client.consume((event) => {
  *   if (event.kind === "accepted") {
- *     console.log("accepted", event.accepted.task_id);
- *   } else {
+ *     console.log("accepted", event.accepted.taskId, event.accepted.routingDecision.terminalAction);
+ *   } else if (event.kind === "attempt") {
  *     console.log("attempt", event.attempt.taskId, event.attempt.status);
+ *   } else {
+ *     console.warn("script fault", event.fault.fault.reason, event.fault.suppressedFaults);
  *   }
  * });
  * ```

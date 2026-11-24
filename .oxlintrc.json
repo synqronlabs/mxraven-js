@@ -16,7 +16,13 @@
   },
   "overrides": [
     {
-      "files": ["src/internal/smtp/**", "src/webhook/**", "src/feedback/**", "src/notify/**"],
+      "files": [
+        "src/internal/smtp/**",
+        "src/internal/body.ts",
+        "src/webhook/**",
+        "src/feedback/**",
+        "src/notify/**"
+      ],
       "rules": {
         "no-await-in-loop": "off"
       }

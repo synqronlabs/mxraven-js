@@ -1,23 +1,33 @@
 /**
- * mxRaven webhook signature verification.
+ * mxRaven request signature verification.
+ *
+ * Routing scripts call tenant endpoints with `mx.http`, and mxRaven signs each
+ * call with the endpoint's key using the same scheme it used for webhooks. A
+ * receiver verifies the request with a {@link Verifier} and then parses its own
+ * payload; the script decides the body, so this module does not impose a
+ * payload model.
  */
 
 import { Buffer } from "node:buffer";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
-import { readBoundedBody } from "./body.js";
-import { decode } from "./decode.js";
-import { InvalidSignatureError, WebhookRequestError } from "./errors.js";
-import type { Event } from "./payload.js";
+import { readBoundedBody } from "../internal/body.js";
+import { InvalidSignatureError, PayloadTooLargeError, WebhookRequestError } from "./errors.js";
 
 /**
  * The mxRaven signature headers.
  *
  * HTTP header names are case-insensitive; these constants carry the canonical
  * spelling used by mxRaven.
+ *
+ * The listener and revision headers identify the script call but are not part
+ * of the signed canonical request. Treat them as context, not as an
+ * authorization decision.
+ *
+ * @public
  */
 export const webhookHeaders = {
-  /** The delivery ID, which is the delivery task ID. */
+  /** The request ID, which is a fresh UUID for every call. */
   webhookId: "X-MxRaven-Webhook-ID",
   /** The Unix signing time in seconds. */
   timestamp: "X-MxRaven-Timestamp",
@@ -25,9 +35,13 @@ export const webhookHeaders = {
   signature: "X-MxRaven-Signature",
   /** The signing key ID. */
   signatureKid: "X-MxRaven-Signature-Kid",
+  /** The listener whose routing script made the call. */
+  listener: "X-MxRaven-Listener",
+  /** The script revision that made the call. */
+  revision: "X-MxRaven-Revision",
 } as const;
 
-/** Options for a {@link Verifier}. */
+/** Options for a {@link Verifier}. @public */
 export interface VerifierOptions {
   /** The signing secret, used as literal bytes and not decoded. */
   readonly secret?: string;
@@ -39,31 +53,55 @@ export interface VerifierOptions {
   readonly maxBodyBytes?: number;
 }
 
-/** Per-call options for verification. */
+/** Per-call options for verification. @public */
 export interface VerifyOptions {
   /** Cancels the body read. */
   readonly signal?: AbortSignal;
+}
+
+/**
+ * Framework-independent request primitives.
+ *
+ * HTTP frameworks that do not use the Fetch API expose their request as
+ * separate fields; pass them to {@link Verifier.verify}. The body must be the
+ * exact raw bytes of the request; a parsed JSON body cannot be verified.
+ *
+ * @public
+ */
+export interface WebhookRequestParts {
+  /** The HTTP method, for example `POST`. */
+  readonly method: string;
+  /** The public, absolute request URL, including any proxy-forwarded scheme and host. */
+  readonly url: string;
+  /** The request headers. */
+  readonly headers: Headers | Record<string, string | readonly string[] | undefined>;
+  /** The exact raw request body. */
+  readonly body: Uint8Array;
 }
 
 const DEFAULT_TOLERANCE = 5 * 60 * 1000;
 const DEFAULT_MAX_BODY_BYTES = 1 << 20;
 
 /**
- * Verifies the signature of an mxRaven webhook request.
+ * Verifies the signature of an mxRaven request.
+ *
+ * This verifies signed `mx.http` calls only. An endpoint configured with a
+ * stored credential is called with that credential header instead and carries
+ * no `X-MxRaven-*` headers; authenticate it yourself.
  *
  * A verifier is safe for concurrent use once constructed. Configure it with a
- * signing secret or with per-key secrets for rotation. For typed dispatch and
- * HTTP status handling, use {@link WebhookHandler}, which composes a verifier.
+ * signing secret or with per-key secrets for rotation.
  *
  * @example
  * ```ts
- * const secret = process.env.MXRAVEN_WEBHOOK_SECRET;
+ * const secret = process.env.MXRAVEN_ENDPOINT_SECRET;
  * if (secret === undefined || secret === "") {
- *   throw new Error("MXRAVEN_WEBHOOK_SECRET is required");
+ *   throw new Error("MXRAVEN_ENDPOINT_SECRET is required");
  * }
  *
  * const verifier = new Verifier({ secret });
- * const event = await verifier.verifyAndDecode(request);
+ * await verifier.verify(request);
+ * const payload = await request.json();
  * ```
  *
  * @public
@@ -116,54 +154,61 @@ export class Verifier {
   /**
    * Verifies a request's signature.
    *
-   * The body is read from a clone, so the caller can still read the original
-   * request body afterwards.
+   * Accepts a Fetch API `Request`, or the framework-independent
+   * {@link WebhookRequestParts}. A `Request` body is read from a clone, so the
+   * caller can still read the original request body afterwards. The canonical
+   * host and request target come from the request URL; behind a proxy that
+   * rewrites the host, pass the public URL the sender called.
    *
-   * @param request - The incoming request.
-   * @param options - An optional cancellation signal.
+   * @param request - The incoming request, or its framework-independent fields.
+   * @param options - An optional cancellation signal for the body read. Ignored
+   * for {@link WebhookRequestParts}, which is already in memory.
    * @throws {@link InvalidSignatureError} When the signature does not match.
    * @throws {@link WebhookRequestError} When required headers are missing, the
-   * timestamp is stale, or the signing key is unknown.
+   * timestamp is stale, the URL is invalid, or the signing key is unknown.
    * @throws {@link PayloadTooLargeError} When the body exceeds the configured
    * limit.
    */
-  async verify(request: Request, options: VerifyOptions = {}): Promise<void> {
-    const body = await this.readBody(request, options.signal);
-    this.check(request, body);
-  }
+  async verify(request: Request | WebhookRequestParts, options: VerifyOptions = {}): Promise<void> {
+    if (request instanceof Request) {
+      const body = await this.readBody(request, options.signal);
+      this.check(request.method, new URL(request.url), request.headers, body);
+      return;
+    }
 
-  /**
-   * Verifies a request and decodes its payload.
-   *
-   * @param request - The incoming request.
-   * @param options - An optional cancellation signal.
-   * @returns The decoded event.
-   * @throws {@link InvalidSignatureError} When the signature does not match.
-   * @throws {@link WebhookRequestError} When verification or decoding fails.
-   * @throws {@link PayloadTooLargeError} When the body exceeds the configured
-   * limit.
-   */
-  async verifyAndDecode(request: Request, options: VerifyOptions = {}): Promise<Event> {
-    const body = await this.readBody(request, options.signal);
-    this.check(request, body);
-    return decode(body);
+    if (request.body.byteLength > this.maxBodyBytes) {
+      throw new PayloadTooLargeError(`webhook: request body exceeds ${this.maxBodyBytes} bytes`);
+    }
+    let url: URL;
+    try {
+      url = new URL(request.url);
+    } catch (cause) {
+      throw new WebhookRequestError("webhook: invalid request URL", cause);
+    }
+    this.check(request.method, url, headersFromParts(request.headers), request.body);
   }
 
   private async readBody(request: Request, signal?: AbortSignal): Promise<Uint8Array> {
     const clone = request.clone();
-    return readBoundedBody(clone.body, this.maxBodyBytes, signal, "request body");
+    return readBoundedBody({
+      stream: clone.body,
+      limit: this.maxBodyBytes,
+      signal,
+      label: "webhook: request body",
+      tooLarge: (message) => new PayloadTooLargeError(message),
+    });
   }
 
-  private check(request: Request, body: Uint8Array): void {
-    const webhookId = request.headers.get(webhookHeaders.webhookId)?.trim() ?? "";
+  private check(method: string, url: URL, headers: Headers, body: Uint8Array): void {
+    const webhookId = headers.get(webhookHeaders.webhookId)?.trim() ?? "";
     if (webhookId === "") {
       throw new WebhookRequestError("webhook: missing webhook ID header");
     }
-    const timestamp = request.headers.get(webhookHeaders.timestamp)?.trim() ?? "";
+    const timestamp = headers.get(webhookHeaders.timestamp)?.trim() ?? "";
     if (timestamp === "") {
       throw new WebhookRequestError("webhook: missing timestamp header");
     }
-    const signature = request.headers.get(webhookHeaders.signature)?.trim() ?? "";
+    const signature = headers.get(webhookHeaders.signature)?.trim() ?? "";
     if (signature === "") {
       throw new WebhookRequestError("webhook: missing signature header");
     }
@@ -178,7 +223,7 @@ export class Verifier {
       }
     }
 
-    const secret = this.secretFor(request.headers.get(webhookHeaders.signatureKid));
+    const secret = this.secretFor(headers.get(webhookHeaders.signatureKid));
 
     const scheme = "sha256=";
     if (!signature.startsWith(scheme)) {
@@ -189,13 +234,7 @@ export class Verifier {
       throw new WebhookRequestError("webhook: malformed signature");
     }
 
-    const expected = signRequest(secret, {
-      method: request.method,
-      url: new URL(request.url),
-      timestamp,
-      webhookId,
-      body,
-    });
+    const expected = signRequest(secret, { method, url, timestamp, webhookId, body });
     if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
       throw new InvalidSignatureError();
     }
@@ -247,6 +286,29 @@ function canonicalTarget(url: URL): string {
     value += url.search;
   }
   return value;
+}
+
+/** Copies framework request headers into a case-insensitive `Headers`. */
+function headersFromParts(
+  headers: Headers | Record<string, string | readonly string[] | undefined>,
+): Headers {
+  const result = new Headers();
+  if (headers instanceof Headers) {
+    for (const [name, value] of headers) {
+      result.append(name, value);
+    }
+    return result;
+  }
+  for (const [name, value] of Object.entries(headers)) {
+    if (typeof value === "string") {
+      result.set(name, value);
+    } else if (value !== undefined) {
+      for (const item of value) {
+        result.append(name, item);
+      }
+    }
+  }
+  return result;
 }
 
 /** Decodes a lowercase or uppercase hex string, or returns `undefined`. */

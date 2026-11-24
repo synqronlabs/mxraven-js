@@ -2,8 +2,9 @@
  * TypeScript SDK for the mxRaven mail-facing runtime surfaces.
  *
  * The package submits email through the mxRaven SMTP submission service and
- * provides runtime helpers for webhook verification, client notifications, and
- * recipient feedback. It mirrors the Go SDK at
+ * provides runtime helpers for signed endpoint-call verification, client
+ * notifications, inbound message parsing, and recipient feedback. It mirrors
+ * the Go SDK at
  * {@link https://github.com/synqronlabs/mxraven-go/tree/main/mail}.
  *
  * @packageDocumentation

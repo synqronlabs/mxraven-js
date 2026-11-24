@@ -1,23 +1,26 @@
 /**
- * Inbound email parsing for mxRaven deliveries.
+ * Inbound email parsing for mxRaven accepted messages.
  *
- * mxRaven webhook payloads describe inbound mail as JSON, and the full message
- * remains available as raw RFC 5322 bytes behind the payload's `raw_email`
- * reference. {@link parseEmail} turns those bytes into headers, addresses,
- * bodies, and decoded attachments; {@link fetchAndParseRawEmail} downloads,
- * verifies, and parses them in one step:
+ * An accepted notification describes inbound mail as JSON, and the full
+ * message remains available as raw RFC 5322 bytes behind the notification's
+ * `rawEmail` reference. {@link parseEmail} turns those bytes into headers,
+ * addresses, bodies, and decoded attachments; {@link fetchAndParseRawEmail}
+ * downloads, verifies, and parses them in one step:
  *
  * ```ts
- * import { Verifier, eventType } from "@mxraven/mail/webhook";
+ * import { NotificationClient } from "@mxraven/mail/notify";
  * import { fetchAndParseRawEmail } from "@mxraven/mail/mime";
  *
- * const verifier = new Verifier({ secret });
- * const event = await verifier.verifyAndDecode(request);
- *
- * if (event.type === eventType.inboundEmail) {
- *   const email = await fetchAndParseRawEmail(event.inboundEmail.raw_email);
+ * await client.consume(async (event) => {
+ *   if (event.kind !== "accepted") {
+ *     return;
+ *   }
+ *   if (event.accepted.rawEmail.accessToken === "") {
+ *     return; // A submission listener has no raw-message access.
+ *   }
+ *   const email = await fetchAndParseRawEmail(event.accepted.rawEmail);
  *   console.log(email.subject, email.attachments.length);
- * }
+ * });
  * ```
  *
  * The parser is defensive: malformed messages yield the best available
@@ -32,8 +35,8 @@
  * @packageDocumentation
  */
 
-import type { RawEmail } from "../webhook/payload.js";
-import { fetchRawEmail, type FetchRawEmailOptions } from "../webhook/raw.js";
+import type { RawEmail } from "../notify/accepted.js";
+import { fetchRawEmail, type FetchRawEmailOptions } from "../notify/raw.js";
 import { parseEmail } from "./parse.js";
 import type { ParsedEmail } from "./parse.js";
 
@@ -41,14 +44,14 @@ export { parseEmail };
 export type { ParsedAddress, ParsedAttachment, ParsedEmail, ParsedHeader } from "./parse.js";
 
 /**
- * Downloads the raw message referenced by an inbound-email payload and parses
+ * Downloads the raw message referenced by an accepted notification and parses
  * it.
  *
  * The download verifies the declared size and SHA-256 digest and is bounded
- * exactly like {@link fetchRawEmail}; the payload's short-lived bearer token is
- * sent in the `Authorization` header and must not be logged.
+ * exactly like {@link fetchRawEmail}; the notification's short-lived bearer
+ * token is sent in the `Authorization` header and must not be logged.
  *
- * @param raw - The `raw_email` object from an inbound-email webhook payload.
+ * @param raw - The `rawEmail` object from an accepted notification.
  * @param options - An optional cancellation signal and `fetch` implementation.
  * @returns The parsed message. All returned byte arrays are fresh copies.
  * @throws `Error` When the download fails or the message exceeds the parser's
@@ -56,7 +59,7 @@ export type { ParsedAddress, ParsedAttachment, ParsedEmail, ParsedHeader } from 
  *
  * @example
  * ```ts
- * const email = await fetchAndParseRawEmail(event.inboundEmail.raw_email, { signal });
+ * const email = await fetchAndParseRawEmail(event.accepted.rawEmail, { signal });
  * for (const attachment of email.attachments) {
  *   console.log(attachment.filename, attachment.content.byteLength);
  * }
